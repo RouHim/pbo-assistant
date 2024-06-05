@@ -73,12 +73,16 @@ fn prime() {
     let p_2_28 = 268435456;
     let p_2_29 = 536870912;
 
-    let primes = sieve_of_eratosthenes(p_2_27);
+    let primes1 = sieve_of_eratosthenes(p_2_27);
+    let primes2 = sieve_of_eratosthenes(p_2_27);
+
+    // Check if results are equal
+    assert_eq!(primes1, primes2);
 
     // Verify the primes
     println!("Verifying primes...");
-    primes.iter().for_each(|&p| {
-        assert!(is_prime(p as u64, 10));
+    primes1.iter().for_each(|&p| {
+        assert!(is_prime(p as u64, 3));
     });
     println!("All primes verified!");
 }

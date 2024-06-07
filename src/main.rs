@@ -13,7 +13,7 @@ fn main() {
 
     // Define a list with physical cores to test, starting with 0
     let mut cores_to_test: Vec<usize> = vec![];
-    let time_to_test_per_core = Duration::seconds(10);
+    let time_to_test_per_core = Duration::minutes(6);
 
     let physical_core_count = get_physical_cores();
 
@@ -72,25 +72,33 @@ fn test_cores(core_ids: Vec<usize>, time_to_test_per_core: TimeDelta) {
 }
 
 fn test_core(core_id: usize, pid_handle: Arc<Mutex<u32>>, verification_failed: Arc<Mutex<bool>>, time_up_handle: Arc<Mutex<bool>>) {
-    let verification_failed_handle = verification_failed.clone();
+    // arc mutex for mutable child
+    let mprime_process_handle = Arc::new(Mutex::new(None));
+
+    let mprime_process_handle2 = mprime_process_handle.clone();
     let prime_handle = thread::spawn(move || {
-        let child = start_prime_verification(core_id);
-                
+        let child = start_mprime_verification(core_id);
+
         // Set the pid of the child process
         let mut pid_handle = pid_handle.lock().unwrap();
         *pid_handle = child.id();
+        
+        // Store the child process in the arc mutex
+        let mut mprime_process_handle = mprime_process_handle2.lock().unwrap();
+        *mprime_process_handle = Some(child);
     });
 
     let verification_failed_handle = verification_failed.clone();
+    let time_up_handle_2 = time_up_handle.clone();
     let monitor_handle = thread::spawn(move || {
-        monitor_cpu(core_id, time_up_handle, verification_failed_handle);
+        monitor(core_id, time_up_handle_2, verification_failed_handle, mprime_process_handle);
     });
 
     prime_handle.join().unwrap();
     monitor_handle.join().unwrap();
 }
 
-fn monitor_cpu(physical_core_id: usize, time_up: Arc<Mutex<bool>>, verification_failed: Arc<Mutex<bool>>) {
+fn monitor(physical_core_id: usize, time_up: Arc<Mutex<bool>>, verification_failed: Arc<Mutex<bool>>, mprime_process_handle: Arc<Mutex<Option<Child>>>) {
     let mut sys = System::new();
     loop {
         // Check if time is up or if the verification failed
@@ -98,18 +106,36 @@ fn monitor_cpu(physical_core_id: usize, time_up: Arc<Mutex<bool>>, verification_
             break;
         }
 
+        // Collect CPU metrics
         sys.refresh_cpu();
         let logical_core_id = physical_core_id * 2;
         let freq = sys.cpus()[logical_core_id].frequency();
-
         // println!("Frequency: {:?}", freq);
+        
+        // Check mprime press output for "TORTURE TEST FAILED"
+        let mut mprime_process = mprime_process_handle.lock().unwrap();
+        if let Some(child) = &mut *mprime_process {
+            let stdout = child.stdout.as_mut().unwrap();
+            let reader = std::io::BufReader::new(stdout);
+            for line in reader.lines() {
+                let line = line.unwrap();
+                //println!("{}", line);
+                if line.contains("TORTURE TEST FAILED") {
+                    println!("#############");
+                    println!("Verification failed for core {}", physical_core_id);
+                    println!("#############");
+                    *verification_failed.lock().unwrap() = true;
+                    break;
+                }
+            }
+        }
 
         // Wait a second
         thread::sleep(std::time::Duration::from_secs(1));
     }
 }
 
-fn start_prime_verification(core_id: usize) -> Child {
+fn start_mprime_verification(core_id: usize) -> Child {
     let child = mprime::run();
 
     // Wait a second to make sure the process is started

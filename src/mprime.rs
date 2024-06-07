@@ -32,11 +32,14 @@ pub fn run() -> Child {
         .spawn()
         .expect("Failed to start the process");
 
-    // Start test from menu
     let mut stdin = child_process.stdin.take().unwrap();
+    // Start torque test 
     stdin.write_all(b"16\n").unwrap();
+    // Core count
     stdin.write_all(b"1\n").unwrap();
+    // Use hyperthreading
     stdin.write_all(b"N\n").unwrap();
+    // Smallest FFTs
     stdin.write_all(b"2\n").unwrap();
     stdin.write_all(b"N\n").unwrap();
     stdin.write_all(b"N\n").unwrap();

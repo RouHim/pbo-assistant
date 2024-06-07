@@ -4,7 +4,7 @@ use std::io::BufRead;
 use std::process::Child;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use chrono::{Duration, TimeDelta};
+use std::time::Duration;
 
 use sysinfo::{Pid, System};
 
@@ -13,7 +13,7 @@ fn main() {
 
     // Define a list with physical cores to test, starting with 0
     let mut cores_to_test: Vec<usize> = vec![];
-    let time_to_test_per_core = Duration::minutes(6);
+    let time_to_test_per_core = parse_duration::parse("10m").unwrap();
 
     let physical_core_count = get_physical_cores();
 
@@ -25,9 +25,9 @@ fn main() {
     test_cores(cores_to_test, time_to_test_per_core);
 }
 
-fn test_cores(core_ids: Vec<usize>, time_to_test_per_core: TimeDelta) {
+fn test_cores(core_ids: Vec<usize>, time_to_test_per_core: Duration) {
     for core_id in core_ids {
-        println!("Testing core {} for {} seconds", core_id, time_to_test_per_core.num_seconds());
+        println!("Testing core {} for {} seconds", core_id, time_to_test_per_core.as_secs());
 
         let pid = Arc::new(Mutex::new(0));
         let verification_failed = Arc::new(Mutex::new(false));
@@ -49,7 +49,7 @@ fn test_cores(core_ids: Vec<usize>, time_to_test_per_core: TimeDelta) {
             // Check if the time to test per core has passed or if the verification failed
 
             while chrono::Utc::now() < end_time || *verification_failed_handle.lock().unwrap() {
-                thread::sleep(std::time::Duration::from_secs(1));
+                thread::sleep(Duration::from_secs(1));
             }
 
             // Kill the prime95 process
@@ -82,7 +82,7 @@ fn test_core(core_id: usize, pid_handle: Arc<Mutex<u32>>, verification_failed: A
         // Set the pid of the child process
         let mut pid_handle = pid_handle.lock().unwrap();
         *pid_handle = child.id();
-        
+
         // Store the child process in the arc mutex
         let mut mprime_process_handle = mprime_process_handle2.lock().unwrap();
         *mprime_process_handle = Some(child);
@@ -111,7 +111,7 @@ fn monitor(physical_core_id: usize, time_up: Arc<Mutex<bool>>, verification_fail
         let logical_core_id = physical_core_id * 2;
         let freq = sys.cpus()[logical_core_id].frequency();
         // println!("Frequency: {:?}", freq);
-        
+
         // Check mprime press output for "TORTURE TEST FAILED"
         let mut mprime_process = mprime_process_handle.lock().unwrap();
         if let Some(child) = &mut *mprime_process {

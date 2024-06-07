@@ -1,5 +1,7 @@
-mod prime95;
+mod mprime;
 
+use std::io::BufRead;
+use std::process::Child;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use chrono::{Duration, TimeDelta};
@@ -7,6 +9,8 @@ use chrono::{Duration, TimeDelta};
 use sysinfo::{Pid, System};
 
 fn main() {
+    mprime::initialize();
+
     // Define a list with physical cores to test, starting with 0
     let mut cores_to_test: Vec<usize> = vec![];
     let time_to_test_per_core = Duration::seconds(10);
@@ -45,12 +49,11 @@ fn test_cores(core_ids: Vec<usize>, time_to_test_per_core: TimeDelta) {
             // Check if the time to test per core has passed or if the verification failed
 
             while chrono::Utc::now() < end_time || *verification_failed_handle.lock().unwrap() {
-                println!("Time left: {:?}", end_time - chrono::Utc::now());
                 thread::sleep(std::time::Duration::from_secs(1));
             }
 
             // Kill the prime95 process
-            prime95::kill(*pid.lock().unwrap());
+            mprime::kill(*pid.lock().unwrap());
 
             // Set the time_up flag to true
             *time_up_handle2.lock().unwrap() = true;
@@ -69,10 +72,13 @@ fn test_cores(core_ids: Vec<usize>, time_to_test_per_core: TimeDelta) {
 }
 
 fn test_core(core_id: usize, pid_handle: Arc<Mutex<u32>>, verification_failed: Arc<Mutex<bool>>, time_up_handle: Arc<Mutex<bool>>) {
+    let verification_failed_handle = verification_failed.clone();
     let prime_handle = thread::spawn(move || {
-        let pid = prime_verification(core_id);
+        let child = start_prime_verification(core_id);
+                
+        // Set the pid of the child process
         let mut pid_handle = pid_handle.lock().unwrap();
-        *pid_handle = pid;
+        *pid_handle = child.id();
     });
 
     let verification_failed_handle = verification_failed.clone();
@@ -96,31 +102,37 @@ fn monitor_cpu(physical_core_id: usize, time_up: Arc<Mutex<bool>>, verification_
         let logical_core_id = physical_core_id * 2;
         let freq = sys.cpus()[logical_core_id].frequency();
 
-        println!("Frequency: {:?}", freq);
+        // println!("Frequency: {:?}", freq);
 
         // Wait a second
         thread::sleep(std::time::Duration::from_secs(1));
     }
 }
 
-fn prime_verification(core_id: usize) -> u32 {
-    let pid = prime95::run();
-    set_thread_affinity(pid, core_id);
-    pid
+fn start_prime_verification(core_id: usize) -> Child {
+    let child = mprime::run();
+
+    // Wait a second to make sure the process is started
+    thread::sleep(std::time::Duration::from_secs(1));
+
+    set_thread_affinity(child.id(), core_id);
+
+    child
 }
 
 /// Set the affinity of a thread to a specific core by using the `taskset` command
 fn set_thread_affinity(pid: u32, physical_core_id: usize) {
     let logical_core_id = physical_core_id * 2;
-    let output = std::process::Command::new("taskset")
+    println!("Setting thread affinity for pid {} to core {}", pid, logical_core_id);
+    std::process::Command::new("taskset")
         .arg("-a")
         .arg("-cp")
         .arg(logical_core_id.to_string())
         .arg(pid.to_string())
-        .output()
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::inherit())
+        .spawn()
         .expect("Failed to set thread affinity");
-
-    println!("Set thread affinity: {:?}", output);
 }
 
 fn get_physical_cores() -> usize {

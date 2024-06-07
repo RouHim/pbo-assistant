@@ -5,13 +5,11 @@ use std::sync::{Arc, Mutex};
 pub fn initialize() {
     let mprime = include_bytes!("../mprime/mprime");
     let prime_txt = include_bytes!("../mprime/prime.txt");
-    let run_sh = include_bytes!("../mprime/run.sh");
 
     std::fs::create_dir_all("/tmp/pbo-assistant").expect("Failed to create directory");
 
     std::fs::write("/tmp/pbo-assistant/mprime", mprime).expect("Failed to write file");
     std::fs::write("/tmp/pbo-assistant/prime.txt", prime_txt).expect("Failed to write file");
-    std::fs::write("/tmp/pbo-assistant/run.sh", run_sh).expect("Failed to write file");
 
     Command::new("chmod")
         .arg("+x")

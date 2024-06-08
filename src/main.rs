@@ -47,7 +47,6 @@ fn test_cores(core_ids: Vec<usize>, time_to_test_per_core: Duration) {
         let verification_failed_handle = verification_failed.clone();
         let core_test_monitor_handle = thread::spawn(move || {
             // Check if the time to test per core has passed or if the verification failed
-
             while chrono::Utc::now() < end_time || *verification_failed_handle.lock().unwrap() {
                 thread::sleep(Duration::from_secs(1));
             }
@@ -60,11 +59,13 @@ fn test_cores(core_ids: Vec<usize>, time_to_test_per_core: Duration) {
         });
 
 
+        // TODO: This hangs on verification failed
         core_test_monitor_handle.join().unwrap();
         core_test_handle.join().unwrap();
 
         // Check if the verification failed
         // TODO: Handle this
+        // TODO: We are stuck after this message gets printed
         if *verification_failed.lock().unwrap() {
             println!("Verification failed for core {}", core_id);
         }
@@ -110,16 +111,18 @@ fn monitor(physical_core_id: usize, time_up: Arc<Mutex<bool>>, verification_fail
         sys.refresh_cpu();
         let logical_core_id = physical_core_id * 2;
         let freq = sys.cpus()[logical_core_id].frequency();
-        // println!("Frequency: {:?}", freq);
+        println!("Frequency: {:?}", freq);
 
         // Check mprime press output for "TORTURE TEST FAILED"
         let mut mprime_process = mprime_process_handle.lock().unwrap();
         if let Some(child) = &mut *mprime_process {
-            let stdout = child.stdout.as_mut().unwrap();
+            let stdout = child.stdout.as_mut().take().unwrap();
             let reader = std::io::BufReader::new(stdout);
+            // TODO: this blocks until there is new output thus we are stuck here
+            // Find a way to read all output in t he buffer and continue
             for line in reader.lines() {
                 let line = line.unwrap();
-                //println!("{}", line);
+                println!("{}", line);
                 if line.contains("TORTURE TEST FAILED") {
                     println!("#############");
                     println!("Verification failed for core {}", physical_core_id);

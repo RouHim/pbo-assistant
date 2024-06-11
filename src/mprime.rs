@@ -1,6 +1,5 @@
-use std::io::{stderr, Write};
+use std::io::Write;
 use std::process::{Child, Command};
-use std::sync::{Arc, Mutex};
 
 pub fn initialize() {
     let mprime = include_bytes!("../mprime/mprime");
@@ -33,7 +32,7 @@ pub fn run() -> Child {
         .expect("Failed to start the process");
 
     let mut stdin = child_process.stdin.take().unwrap();
-    // Start torque test 
+    // Start torque test
     stdin.write_all(b"16\n").unwrap();
     // Core count
     stdin.write_all(b"1\n").unwrap();

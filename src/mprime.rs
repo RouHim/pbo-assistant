@@ -51,10 +51,10 @@ pub fn run() -> Child {
     child_process
 }
 
-pub fn kill(p0: u32) {
+pub fn kill(pid: u32) {
     Command::new("kill")
         .arg("-9")
-        .arg(p0.to_string())
+        .arg(pid.to_string())
         .output()
         .expect("Failed to kill the process");
 }

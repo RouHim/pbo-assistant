@@ -1,7 +1,7 @@
 use crate::cpu_test::CpuTestResult;
 
-mod mprime;
 mod cpu_test;
+mod mprime;
 
 fn main() {
     let rest_result = cpu_test::run("10m", vec![]);

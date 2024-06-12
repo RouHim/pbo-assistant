@@ -1,12 +1,12 @@
+use crate::mprime;
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::io::BufRead;
 use std::process::Child;
-use sysinfo::System;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use chrono::{DateTime, Utc};
-use std::io::BufRead;
-use crate::mprime;
+use sysinfo::System;
 
 #[derive(Debug)]
 pub struct CpuTestResult {
@@ -34,8 +34,10 @@ pub fn run(duration: &str, cores_to_test: Vec<usize>) -> HashMap<usize, CpuTestR
     test_cores(cores_to_test, time_to_test_per_core)
 }
 
-
-fn test_cores(core_ids: Vec<usize>, time_to_test_per_core: Duration) -> HashMap<usize, CpuTestResult> {
+fn test_cores(
+    core_ids: Vec<usize>,
+    time_to_test_per_core: Duration,
+) -> HashMap<usize, CpuTestResult> {
     let mut results = HashMap::new();
 
     for core_id in core_ids {
@@ -47,13 +49,16 @@ fn test_cores(core_ids: Vec<usize>, time_to_test_per_core: Duration) -> HashMap<
         let min_clock = *clocks.iter().min().unwrap();
         let avg_clock = clocks.iter().sum::<u64>() / clocks.len() as u64;
 
-        results.insert(core_id, CpuTestResult {
-            id: core_id,
-            verification_failed,
-            max_clock,
-            min_clock,
-            avg_clock,
-        });
+        results.insert(
+            core_id,
+            CpuTestResult {
+                id: core_id,
+                verification_failed,
+                max_clock,
+                min_clock,
+                avg_clock,
+            },
+        );
     }
 
     results
@@ -155,20 +160,23 @@ fn check_time_left(
 
         // Check if the verification failed
         if *verification_failed.lock().unwrap() {
-            
             // Kill the prime95 process
             let pid = *pid.lock().unwrap();
             mprime::kill(pid);
-            
+
             break;
         }
-        
+
         // Wait a second
         thread::sleep(Duration::from_secs(1));
     }
 }
 
-fn start_mprime_for_core(core_id: usize, pid: Arc<Mutex<u32>>, mprime_process: Arc<Mutex<Option<Child>>>) {
+fn start_mprime_for_core(
+    core_id: usize,
+    pid: Arc<Mutex<u32>>,
+    mprime_process: Arc<Mutex<Option<Child>>>,
+) {
     let child = start_mprime_verification(core_id);
 
     // Set the pid of the child process
@@ -213,11 +221,10 @@ fn monitor_process(
     mprime_process: Arc<Mutex<Option<Child>>>,
 ) {
     if let Some(mprime_process) = &mut *mprime_process.lock().unwrap() {
-        
         let stdout = mprime_process.stdout.as_mut().unwrap();
         let reader = std::io::BufReader::new(stdout);
         let lines = reader.lines();
-        
+
         for line in lines {
             // if time is up, break
             if *time_up.lock().unwrap() {

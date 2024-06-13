@@ -1,6 +1,7 @@
 use crate::mprime;
 use chrono::{DateTime, Utc};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 use std::io::BufRead;
 use std::process::Child;
 use std::sync::{Arc, Mutex};
@@ -17,21 +18,58 @@ pub struct CpuTestResult {
     pub min_clock: u64,
 }
 
-pub fn run(duration: &str, cores_to_test: Vec<usize>) -> HashMap<usize, CpuTestResult> {
+#[derive(Debug)]
+pub struct CpuTestConfig {
+    pub duration_per_core: String,
+    pub cores_to_test: Vec<usize>,
+    pub test_methods: Vec<CpuTestMethod>,
+}
+
+#[derive(Debug)]
+pub enum CpuTestMethod {
+    Prime95,
+    YCruncher,
+}
+
+pub fn run(config: CpuTestConfig) -> HashMap<usize, CpuTestResult> {
     mprime::initialize();
 
-    // Define a list with physical cores to test, starting with 0
-    let mut cores_to_test: Vec<usize> = cores_to_test;
-    let time_to_test_per_core = parse_duration::parse(duration).unwrap();
+    let cores_to_test = get_cores_to_test(&config.cores_to_test, get_physical_cores());
 
-    let physical_core_count = get_physical_cores();
+    let duration = config.duration_per_core;
+
+    let time_to_test_per_core = parse_duration::parse(&duration).unwrap();
+    test_cores(cores_to_test, time_to_test_per_core)
+}
+
+fn get_cores_to_test(cores_to_test: &[usize], physical_core_count: usize) -> Vec<usize> {
+    let mut cores_to_test: Vec<usize> = cores_to_test.to_vec();
 
     // If cores_to_test is empty fill with all physical cores
     if cores_to_test.is_empty() {
         cores_to_test = (0..physical_core_count).collect::<Vec<_>>();
     }
 
-    test_cores(cores_to_test, time_to_test_per_core)
+    // Remove duplicates
+    dedup(&mut cores_to_test);
+
+    // Remove cores that are not available
+    cores_to_test.retain(|&core| core < physical_core_count);
+    
+    // Alternate the cores to test
+    // This is done to avoid testing cores that are next to each other
+    cores_to_test = alternate_cores(cores_to_test);
+
+    cores_to_test
+}
+
+// test for get_cores_to_test
+#[test]
+fn test_get_cores_to_test() {
+    let cores_to_test = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 4, 3];
+    let physical_core_count = 8;
+    let cores_to_test = get_cores_to_test(&cores_to_test, physical_core_count);
+    assert_eq!(cores_to_test, vec![0, 7, 1, 6, 2, 5, 3, 4]);
 }
 
 fn test_cores(
@@ -75,26 +113,30 @@ fn test_core(core_id: usize, time_to_test_per_core: Duration) -> (bool, Vec<u64>
     let pid = Arc::new(Mutex::new(0));
     let verification_failed = Arc::new(Mutex::new(false));
     let time_up = Arc::new(Mutex::new(false));
-    let mprime_process = Arc::new(Mutex::new(None));
+    let test_program_process = Arc::new(Mutex::new(None));
 
     // Define the start and end time for the test
     let start_time = Utc::now();
     let end_time = start_time + time_to_test_per_core;
 
-    // Thread that starts the prime95 process
-    let pid_handle = pid.clone();
-    let mprime_process_handle_1 = mprime_process.clone();
-    let core_test_handle = thread::spawn(move || {
-        start_mprime_for_core(core_id, pid_handle, mprime_process_handle_1);
+    // Thread that starts the test program process
+    let pid_for_core_test = pid.clone();
+    let test_program_process_for_core_test = test_program_process.clone();
+    let test_program_thread = thread::spawn(move || {
+        start_mprime_for_core(
+            core_id,
+            pid_for_core_test,
+            test_program_process_for_core_test,
+        );
     });
 
-    // Wait a bit for the prime95 process to start
+    // Wait a bit for the test program process to start
     thread::sleep(Duration::from_secs(3));
 
     // Thread that monitors the CPU usage
     let verification_failed_for_monitor_cpu = verification_failed.clone();
     let time_up_for_monitor_cpu = time_up.clone();
-    let monitor_cpu_handle = thread::spawn(move || {
+    let monitor_cpu_thread = thread::spawn(move || {
         monitor_cpu(
             core_id,
             time_up_for_monitor_cpu,
@@ -105,8 +147,8 @@ fn test_core(core_id: usize, time_to_test_per_core: Duration) -> (bool, Vec<u64>
     // Thread that monitors the prime95 process output for errors
     let time_up_for_monitor_process = time_up.clone();
     let verification_failed_for_monitor_process = verification_failed.clone();
-    let mprime_process_for_monitor_process = mprime_process.clone();
-    let monitor_process_handle = thread::spawn(move || {
+    let mprime_process_for_monitor_process = test_program_process.clone();
+    let monitor_process_thread = thread::spawn(move || {
         monitor_process(
             core_id,
             time_up_for_monitor_process,
@@ -118,7 +160,7 @@ fn test_core(core_id: usize, time_to_test_per_core: Duration) -> (bool, Vec<u64>
     // Thread that checks if the time to test per core has passed
     let time_up_for_time_tester = time_up.clone();
     let verification_failed_for_time_tester = verification_failed.clone();
-    let core_test_timer_handle = thread::spawn(move || {
+    let core_test_timer_thread = thread::spawn(move || {
         check_time_left(
             pid,
             end_time,
@@ -128,15 +170,42 @@ fn test_core(core_id: usize, time_to_test_per_core: Duration) -> (bool, Vec<u64>
     });
 
     // Wait for all threads to finish
-    core_test_handle.join().unwrap();
-    let clocks = monitor_cpu_handle.join().unwrap();
-    monitor_process_handle.join().unwrap();
-    core_test_timer_handle.join().unwrap();
+    test_program_thread.join().unwrap();
+    let clocks = monitor_cpu_thread.join().unwrap();
+    monitor_process_thread.join().unwrap();
+    core_test_timer_thread.join().unwrap();
 
     // Check if the verification failed
     let verification_failed = *verification_failed.lock().unwrap();
 
     (verification_failed, clocks)
+}
+
+fn alternate_cores(mut cores: Vec<usize>) -> Vec<usize> {
+    cores.sort();
+
+    let mut alt_cores: Vec<usize> = vec![];
+
+    let mut take_first = true;
+    while !cores.is_empty() {
+        if take_first {
+            let c = cores.first().unwrap();
+            alt_cores.push(*c);
+            cores.remove(0);
+        } else {
+            let c = cores.last().unwrap();
+            alt_cores.push(*c);
+            cores.remove(cores.len() - 1);
+        }
+
+        take_first = !take_first;
+    }
+    alt_cores
+}
+
+fn dedup<T: Eq + Hash + Copy>(v: &mut Vec<T>) {
+    let mut uniques = HashSet::new();
+    v.retain(|e| uniques.insert(*e));
 }
 
 fn check_time_left(
@@ -234,7 +303,7 @@ fn monitor_process(
             let line = line.unwrap();
             //println!("{}", line);
 
-            if line.contains("TORTURE TEST FAILED") {
+            if line.contains(mprime::ERROR_MESSAGE) {
                 println!("#############");
                 println!("Verification failed for core {}", physical_core_id);
                 println!("#############");

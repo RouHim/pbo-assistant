@@ -1,6 +1,8 @@
 use std::io::Write;
 use std::process::{Child, Command};
 
+pub const ERROR_MESSAGE: &str = "TORTURE TEST FAILED";
+
 pub fn initialize() {
     let mprime = include_bytes!("../mprime/mprime");
     let prime_txt = include_bytes!("../mprime/prime.txt");

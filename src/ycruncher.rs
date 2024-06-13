@@ -7,13 +7,11 @@ use std::time::Duration;
 pub const ERROR_MESSAGE: &str = "TORTURE TEST FAILED";
 
 pub fn initialize() {
-    let mprime = include_bytes!("../mprime/mprime");
-    let prime_txt = include_bytes!("../mprime/prime.txt");
+    let ycruncher = include_bytes!("../ycruncher/ycruncher");
 
     std::fs::create_dir_all("/tmp/pbo-assistant").expect("Failed to create directory");
 
-    std::fs::write("/tmp/pbo-assistant/mprime", mprime).expect("Failed to write file");
-    std::fs::write("/tmp/pbo-assistant/prime.txt", prime_txt).expect("Failed to write file");
+    std::fs::write("/tmp/pbo-assistant/ycruncher", ycruncher).expect("Failed to write file");
 
     Command::new("chmod")
         .arg("+x")
@@ -23,13 +21,13 @@ pub fn initialize() {
 
     Command::new("chmod")
         .arg("+x")
-        .arg("/tmp/pbo-assistant/mprime")
+        .arg("/tmp/pbo-assistant/ycruncher")
         .output()
         .expect("Failed to change permissions");
 }
 
-fn spawn_process() -> Child {
-    let mut child_process = Command::new("/tmp/pbo-assistant/mprime")
+fn spawn_process(core_id: usize) -> Child {
+    let mut child_process = Command::new("/tmp/pbo-assistant/ycruncher")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -37,17 +35,27 @@ fn spawn_process() -> Child {
         .expect("Failed to start the process");
 
     let mut stdin = child_process.stdin.take().unwrap();
-    // Start torque test
-    stdin.write_all(b"16\n").unwrap();
-    // Core count
+    
+    // Apply this inputs:
+    // 1   Component Stress Tester
+    // 1   Modify Cores
+    // d   Disable all Cores
+    // #   Number of logical core id
+    // \n  confirm core dialog
+    // 2   Modify memory settins
+    // \n  confirm core dialog
+    // 5   Run Forever (we are managing the time)
+    // 0   Start Stress test
+    
     stdin.write_all(b"1\n").unwrap();
-    // Use hyperthreading
-    stdin.write_all(b"N\n").unwrap();
-    // Smallest FFTs
+    stdin.write_all(b"1\n").unwrap();
+    stdin.write_all(b"d\n").unwrap();
+    stdin.write_all(format!("{}\n", core_id).as_bytes()).unwrap();
+    stdin.write_all(b"\n").unwrap();
     stdin.write_all(b"2\n").unwrap();
-    stdin.write_all(b"N\n").unwrap();
-    stdin.write_all(b"N\n").unwrap();
-    stdin.write_all(b"Y\n").unwrap();
+    stdin.write_all(b"\n").unwrap();
+    stdin.write_all(b"5\n").unwrap();
+    stdin.write_all(b"0\n").unwrap();
 
     let proccess_id = child_process.id();
 
@@ -57,12 +65,10 @@ fn spawn_process() -> Child {
 }
 
 pub fn start_verification(core_id: usize) -> Child {
-    let child = spawn_process();
+    let child = spawn_process(core_id);
 
     // Wait a second to make sure the process is started
     thread::sleep(Duration::from_secs(1));
-
-    process::set_thread_affinity(child.id(), core_id);
 
     child
 }

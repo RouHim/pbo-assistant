@@ -1,15 +1,18 @@
-use crate::mprime;
-use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::io::BufRead;
+use std::ops::Div;
 use std::process::Child;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+
+use chrono::{DateTime, Utc};
 use sysinfo::System;
 
-#[derive(Debug)]
+use crate::{mprime, process, ycruncher};
+
+#[derive(Debug, Clone, Copy)]
 pub struct CpuTestResult {
     pub id: usize,
     pub verification_failed: bool,
@@ -18,14 +21,14 @@ pub struct CpuTestResult {
     pub min_clock: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CpuTestConfig {
     pub duration_per_core: String,
     pub cores_to_test: Vec<usize>,
     pub test_methods: Vec<CpuTestMethod>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum CpuTestMethod {
     Prime95,
     YCruncher,
@@ -39,7 +42,64 @@ pub fn run(config: CpuTestConfig) -> HashMap<usize, CpuTestResult> {
     let duration = config.duration_per_core;
 
     let time_to_test_per_core = parse_duration::parse(&duration).unwrap();
-    test_cores(cores_to_test, time_to_test_per_core)
+
+    let mut responses: Vec<HashMap<usize, CpuTestResult>> = vec![];
+
+    for test_method in &config.test_methods {
+        let time_per_method = time_to_test_per_core.div(config.test_methods.len() as u32);
+
+        let test_method_response = test_cores(test_method, &cores_to_test, time_per_method);
+
+        responses.push(test_method_response);
+    }
+
+    merge_responses(responses)
+}
+
+fn merge_responses(
+    test_responses: Vec<HashMap<usize, CpuTestResult>>,
+) -> HashMap<usize, CpuTestResult> {
+    let mut merged_response = HashMap::new();
+    let core_count = get_physical_cores();
+
+    for core_id in 0..core_count {
+        let mut max_clock = 0;
+        let mut min_clock = 0;
+        let mut avg_clock = 0;
+        let mut verification_failed = false;
+
+        for response in &test_responses {
+            if let Some(cpu_test_result) = response.get(&core_id) {
+                if cpu_test_result.verification_failed {
+                    verification_failed = true;
+                }
+
+                if cpu_test_result.max_clock > max_clock {
+                    max_clock = cpu_test_result.max_clock;
+                }
+
+                if cpu_test_result.min_clock < min_clock {
+                    min_clock = cpu_test_result.min_clock;
+                }
+
+                avg_clock += cpu_test_result.avg_clock;
+            }
+        }
+
+        avg_clock = avg_clock / test_responses.len() as u64;
+
+        let cpu_test_result = CpuTestResult {
+            id: core_id,
+            verification_failed,
+            max_clock,
+            min_clock,
+            avg_clock,
+        };
+
+        merged_response.insert(core_id, cpu_test_result);
+    }
+
+    merged_response
 }
 
 fn get_cores_to_test(cores_to_test: &[usize], physical_core_count: usize) -> Vec<usize> {
@@ -55,7 +115,7 @@ fn get_cores_to_test(cores_to_test: &[usize], physical_core_count: usize) -> Vec
 
     // Remove cores that are not available
     cores_to_test.retain(|&core| core < physical_core_count);
-    
+
     // Alternate the cores to test
     // This is done to avoid testing cores that are next to each other
     cores_to_test = alternate_cores(cores_to_test);
@@ -73,13 +133,16 @@ fn test_get_cores_to_test() {
 }
 
 fn test_cores(
-    core_ids: Vec<usize>,
+    cpu_test_method: &CpuTestMethod,
+    core_ids: &Vec<usize>,
     time_to_test_per_core: Duration,
 ) -> HashMap<usize, CpuTestResult> {
     let mut results = HashMap::new();
 
     for core_id in core_ids {
-        let result = test_core(core_id, time_to_test_per_core);
+        let core_id = *core_id;
+
+        let result = test_core(cpu_test_method, core_id, time_to_test_per_core);
 
         let verification_failed = result.0;
         let clocks = result.1;
@@ -102,7 +165,11 @@ fn test_cores(
     results
 }
 
-fn test_core(core_id: usize, time_to_test_per_core: Duration) -> (bool, Vec<u64>) {
+fn test_core(
+    cpu_test_method: &CpuTestMethod,
+    core_id: usize,
+    time_to_test_per_core: Duration,
+) -> (bool, Vec<u64>) {
     println!(
         "Testing core {} for {} seconds",
         core_id,
@@ -122,8 +189,10 @@ fn test_core(core_id: usize, time_to_test_per_core: Duration) -> (bool, Vec<u64>
     // Thread that starts the test program process
     let pid_for_core_test = pid.clone();
     let test_program_process_for_core_test = test_program_process.clone();
+    let cpu_test_method = *cpu_test_method;
     let test_program_thread = thread::spawn(move || {
-        start_mprime_for_core(
+        start_test_program_for_core(
+            cpu_test_method,
             core_id,
             pid_for_core_test,
             test_program_process_for_core_test,
@@ -222,7 +291,7 @@ fn check_time_left(
 
             // Kill the prime95 process
             let pid = *pid.lock().unwrap();
-            mprime::kill(pid);
+            process::kill(pid);
 
             break;
         }
@@ -231,7 +300,7 @@ fn check_time_left(
         if *verification_failed.lock().unwrap() {
             // Kill the prime95 process
             let pid = *pid.lock().unwrap();
-            mprime::kill(pid);
+            process::kill(pid);
 
             break;
         }
@@ -241,20 +310,24 @@ fn check_time_left(
     }
 }
 
-fn start_mprime_for_core(
+fn start_test_program_for_core(
+    cpu_test_method: CpuTestMethod,
     core_id: usize,
     pid: Arc<Mutex<u32>>,
-    mprime_process: Arc<Mutex<Option<Child>>>,
+    test_program_process: Arc<Mutex<Option<Child>>>,
 ) {
-    let child = start_mprime_verification(core_id);
+    let child = match cpu_test_method {
+        CpuTestMethod::Prime95 => mprime::start_verification(core_id),
+        CpuTestMethod::YCruncher => ycruncher::start_verification(core_id),
+    };
 
     // Set the pid of the child process
     let mut pid_handle = pid.lock().unwrap();
     *pid_handle = child.id();
 
     // Store the child process in the arc mutex
-    let mut mprime_process_handle = mprime_process.lock().unwrap();
-    *mprime_process_handle = Some(child);
+    let mut test_program_process_handle = test_program_process.lock().unwrap();
+    *test_program_process_handle = Some(child);
 }
 
 fn monitor_cpu(
@@ -314,35 +387,6 @@ fn monitor_process(
             }
         }
     }
-}
-
-fn start_mprime_verification(core_id: usize) -> Child {
-    let child = mprime::run();
-
-    // Wait a second to make sure the process is started
-    thread::sleep(Duration::from_secs(1));
-
-    set_thread_affinity(child.id(), core_id);
-
-    child
-}
-
-/// Set the affinity of a thread to a specific core by using the `taskset` command
-fn set_thread_affinity(pid: u32, physical_core_id: usize) {
-    let logical_core_id = physical_core_id * 2;
-    println!(
-        "Setting thread affinity for pid {} to logical core {}",
-        pid, logical_core_id
-    );
-    std::process::Command::new("taskset")
-        .arg("-a")
-        .arg("-cp")
-        .arg(logical_core_id.to_string())
-        .arg(pid.to_string())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::inherit())
-        .spawn()
-        .expect("Failed to set thread affinity");
 }
 
 fn get_physical_cores() -> usize {

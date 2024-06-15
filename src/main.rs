@@ -6,6 +6,9 @@ mod process;
 mod ycruncher;
 
 fn main() {
+    // TODO:
+    // - Prüfe  ob die laufzeit pro core stimmt (vermutung die laufzeit wird nicht richtug aufgeteilt zwischen den methoden)
+    // - Wenn die erste test methode failt wird trotzdem die alle anderen test methoden ausgeführt
     let config = cpu_test::CpuTestConfig {
         duration_per_core: "10m".to_string(),
         cores_to_test: vec![],

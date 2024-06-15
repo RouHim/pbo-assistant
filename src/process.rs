@@ -1,4 +1,6 @@
-use std::process::Command;
+use std::io::Write;
+use std::process::{Child, Command};
+use std::sync::{Arc, Mutex};
 
 /// Set the affinity of a thread to a specific core by using the `taskset` command
 pub fn set_thread_affinity(pid: u32, physical_core_id: usize) {
@@ -7,7 +9,7 @@ pub fn set_thread_affinity(pid: u32, physical_core_id: usize) {
         "Setting thread affinity for pid {} to logical core {}",
         pid, logical_core_id
     );
-    std::process::Command::new("taskset")
+    Command::new("taskset")
         .arg("-a")
         .arg("-cp")
         .arg(logical_core_id.to_string())
@@ -18,10 +20,20 @@ pub fn set_thread_affinity(pid: u32, physical_core_id: usize) {
         .expect("Failed to set thread affinity");
 }
 
-pub fn kill(pid: u32) {
-    Command::new("kill")
-        .arg("-9")
-        .arg(pid.to_string())
+pub fn kill() {
+    let output = Command::new("pgrep")
+        .arg("-f")
+        .arg("/tmp/pbo-assistant/")
         .output()
-        .expect("Failed to kill the process");
+        .expect("Failed to list processes");
+    
+    let pids = String::from_utf8(output.stdout).expect("Failed to convert output to string");
+    
+    for pid in pids.lines() {
+        Command::new("kill")
+            .arg(pid)
+            .output()
+            .expect("Failed to kill process");
+    }
 }
+

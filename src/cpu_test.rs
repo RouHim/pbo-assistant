@@ -36,6 +36,7 @@ pub enum CpuTestMethod {
 
 pub fn run(config: CpuTestConfig) -> HashMap<usize, CpuTestResult> {
     mprime::initialize();
+    ycruncher::initialize();
 
     let cores_to_test = get_cores_to_test(&config.cores_to_test, get_physical_cores());
 
@@ -43,63 +44,42 @@ pub fn run(config: CpuTestConfig) -> HashMap<usize, CpuTestResult> {
 
     let time_to_test_per_core = parse_duration::parse(&duration).unwrap();
 
-    let mut responses: Vec<HashMap<usize, CpuTestResult>> = vec![];
+    let response = test_cores(config.test_methods, &cores_to_test, time_to_test_per_core);
 
-    for test_method in &config.test_methods {
-        let time_per_method = time_to_test_per_core.div(config.test_methods.len() as u32);
-
-        let test_method_response = test_cores(test_method, &cores_to_test, time_per_method);
-
-        responses.push(test_method_response);
-    }
-
-    merge_responses(responses)
+    response
 }
 
-fn merge_responses(
-    test_responses: Vec<HashMap<usize, CpuTestResult>>,
-) -> HashMap<usize, CpuTestResult> {
-    let mut merged_response = HashMap::new();
-    let core_count = get_physical_cores();
+fn merge_responses(test_responses: Vec<CpuTestResult>) -> CpuTestResult {
+    let mut verification_failed = false;
+    let mut max_clock = 0;
+    let mut min_clock = 0;
+    let mut avg_clock = 0;
 
-    for core_id in 0..core_count {
-        let mut max_clock = 0;
-        let mut min_clock = 0;
-        let mut avg_clock = 0;
-        let mut verification_failed = false;
-
-        for response in &test_responses {
-            if let Some(cpu_test_result) = response.get(&core_id) {
-                if cpu_test_result.verification_failed {
-                    verification_failed = true;
-                }
-
-                if cpu_test_result.max_clock > max_clock {
-                    max_clock = cpu_test_result.max_clock;
-                }
-
-                if cpu_test_result.min_clock < min_clock {
-                    min_clock = cpu_test_result.min_clock;
-                }
-
-                avg_clock += cpu_test_result.avg_clock;
-            }
+    for response in &test_responses {
+        if response.verification_failed {
+            verification_failed = true;
         }
 
-        avg_clock = avg_clock / test_responses.len() as u64;
+        if response.max_clock > max_clock {
+            max_clock = response.max_clock;
+        }
 
-        let cpu_test_result = CpuTestResult {
-            id: core_id,
-            verification_failed,
-            max_clock,
-            min_clock,
-            avg_clock,
-        };
+        if response.min_clock < min_clock {
+            min_clock = response.min_clock;
+        }
 
-        merged_response.insert(core_id, cpu_test_result);
+        avg_clock += response.avg_clock;
     }
 
-    merged_response
+    avg_clock /= test_responses.len() as u64;
+
+    CpuTestResult {
+        id: test_responses[0].id,
+        verification_failed,
+        max_clock,
+        min_clock,
+        avg_clock,
+    }
 }
 
 fn get_cores_to_test(cores_to_test: &[usize], physical_core_count: usize) -> Vec<usize> {
@@ -133,43 +113,44 @@ fn test_get_cores_to_test() {
 }
 
 fn test_cores(
-    cpu_test_method: &CpuTestMethod,
+    cpu_test_methods: Vec<CpuTestMethod>,
     core_ids: &Vec<usize>,
     time_to_test_per_core: Duration,
 ) -> HashMap<usize, CpuTestResult> {
-    let mut results = HashMap::new();
+    let mut core_results = HashMap::new();
 
     for core_id in core_ids {
         let core_id = *core_id;
 
-        let result = test_core(cpu_test_method, core_id, time_to_test_per_core);
+        let mut result_from_all_test_methods: Vec<CpuTestResult> = vec![];
 
-        let verification_failed = result.0;
-        let clocks = result.1;
-        let max_clock = *clocks.iter().max().unwrap();
-        let min_clock = *clocks.iter().min().unwrap();
-        let avg_clock = clocks.iter().sum::<u64>() / clocks.len() as u64;
+        for cpu_test_method in &cpu_test_methods {
+            let time_per_method = time_to_test_per_core.div(cpu_test_methods.len() as u32);
 
-        results.insert(
-            core_id,
-            CpuTestResult {
-                id: core_id,
-                verification_failed,
-                max_clock,
-                min_clock,
-                avg_clock,
-            },
-        );
+            println!(
+                "Testing method {:?} for {:?}",
+                cpu_test_method, time_per_method
+            );
+
+            let cpu_test_result = test_core(cpu_test_method, core_id, time_to_test_per_core);
+
+            result_from_all_test_methods.push(cpu_test_result);
+
+            // Wait 5 seconds to cool down the CPU
+            thread::sleep(Duration::from_secs(5));
+        }
+
+        core_results.insert(core_id, merge_responses(result_from_all_test_methods));
     }
 
-    results
+    core_results
 }
 
 fn test_core(
     cpu_test_method: &CpuTestMethod,
     core_id: usize,
     time_to_test_per_core: Duration,
-) -> (bool, Vec<u64>) {
+) -> CpuTestResult {
     println!(
         "Testing core {} for {} seconds",
         core_id,
@@ -231,7 +212,6 @@ fn test_core(
     let verification_failed_for_time_tester = verification_failed.clone();
     let core_test_timer_thread = thread::spawn(move || {
         check_time_left(
-            pid,
             end_time,
             time_up_for_time_tester,
             verification_failed_for_time_tester,
@@ -247,7 +227,21 @@ fn test_core(
     // Check if the verification failed
     let verification_failed = *verification_failed.lock().unwrap();
 
-    (verification_failed, clocks)
+    build_test_result(core_id, clocks, verification_failed)
+}
+
+fn build_test_result(core_id: usize, clocks: Vec<u64>, verification_failed: bool) -> CpuTestResult {
+    let max_clock = *clocks.iter().max().unwrap();
+    let min_clock = *clocks.iter().min().unwrap();
+    let avg_clock = clocks.iter().sum::<u64>() / clocks.len() as u64;
+
+    CpuTestResult {
+        id: core_id,
+        verification_failed,
+        max_clock,
+        min_clock,
+        avg_clock,
+    }
 }
 
 fn alternate_cores(mut cores: Vec<usize>) -> Vec<usize> {
@@ -278,7 +272,6 @@ fn dedup<T: Eq + Hash + Copy>(v: &mut Vec<T>) {
 }
 
 fn check_time_left(
-    pid: Arc<Mutex<u32>>,
     end_time: DateTime<Utc>,
     time_up: Arc<Mutex<bool>>,
     verification_failed: Arc<Mutex<bool>>,
@@ -289,18 +282,16 @@ fn check_time_left(
             println!("Time is up");
             *time_up.lock().unwrap() = true;
 
-            // Kill the prime95 process
-            let pid = *pid.lock().unwrap();
-            process::kill(pid);
+            // Kill the test program processes
+            process::kill();
 
             break;
         }
 
         // Check if the verification failed
         if *verification_failed.lock().unwrap() {
-            // Kill the prime95 process
-            let pid = *pid.lock().unwrap();
-            process::kill(pid);
+            // Kill the rest program processes
+            process::kill();
 
             break;
         }
@@ -374,9 +365,9 @@ fn monitor_process(
             }
 
             let line = line.unwrap();
-            //println!("{}", line);
+            println!("{}", line);
 
-            if line.contains(mprime::ERROR_MESSAGE) {
+            if line.contains(mprime::ERROR_MESSAGE) || line.contains(ycruncher::ERROR_MESSAGE) {
                 println!("#############");
                 println!("Verification failed for core {}", physical_core_id);
                 println!("#############");

@@ -5,31 +5,26 @@ use std::thread;
 use std::time::Duration;
 
 pub const ERROR_MESSAGE: &str = "TORTURE TEST FAILED";
+const PROCESS_PATH: &str = "/tmp/pbo-assistant/mprime/mprime";
 
 pub fn initialize() {
     let mprime = include_bytes!("../mprime/mprime");
     let prime_txt = include_bytes!("../mprime/prime.txt");
 
-    std::fs::create_dir_all("/tmp/pbo-assistant").expect("Failed to create directory");
+    std::fs::create_dir_all("/tmp/pbo-assistant/mprime").expect("Failed to create directory");
 
-    std::fs::write("/tmp/pbo-assistant/mprime", mprime).expect("Failed to write file");
-    std::fs::write("/tmp/pbo-assistant/prime.txt", prime_txt).expect("Failed to write file");
-
-    Command::new("chmod")
-        .arg("+x")
-        .arg("/tmp/pbo-assistant/run.sh")
-        .output()
-        .expect("Failed to change permissions");
+    std::fs::write(PROCESS_PATH, mprime).expect("Failed to write file");
+    std::fs::write("/tmp/pbo-assistant/mprime/prime.txt", prime_txt).expect("Failed to write file");
 
     Command::new("chmod")
         .arg("+x")
-        .arg("/tmp/pbo-assistant/mprime")
+        .arg(PROCESS_PATH)
         .output()
         .expect("Failed to change permissions");
 }
 
 fn spawn_process() -> Child {
-    let mut child_process = Command::new("/tmp/pbo-assistant/mprime")
+    let mut child_process = Command::new(PROCESS_PATH)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

@@ -29,7 +29,7 @@ pub fn initialize() {
 
 fn spawn_process(core_id: usize) -> Child {
     let logical_core_id = core_id * 2;
-    
+
     let mut child_process = Command::new(PROCESS_PATH)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())

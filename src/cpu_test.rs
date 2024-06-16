@@ -122,19 +122,35 @@ fn test_cores(
     for core_id in core_ids {
         let core_id = *core_id;
 
+        println!("===================================");
+        println!(
+            "Testing core {} for {} seconds",
+            core_id,
+            time_to_test_per_core.as_secs()
+        );
+        println!("===================================");
+
         let mut result_from_all_test_methods: Vec<CpuTestResult> = vec![];
 
         for cpu_test_method in &cpu_test_methods {
             let time_per_method = time_to_test_per_core.div(cpu_test_methods.len() as u32);
 
             println!(
-                "Testing method {:?} for {:?}",
+                " --> Testing method {:?} for {:?}",
                 cpu_test_method, time_per_method
             );
 
-            let cpu_test_result = test_core(cpu_test_method, core_id, time_to_test_per_core);
+            // Test the core for the given method
+            let cpu_test_result = test_core_with_method(cpu_test_method, core_id, time_per_method);
 
+            // Store the result of all test methods
             result_from_all_test_methods.push(cpu_test_result);
+
+            // If cpu test result is failed, break earls the loop,
+            // we do not need to test the other methods
+            if cpu_test_result.verification_failed {
+                break;
+            }
 
             // Wait 5 seconds to cool down the CPU
             thread::sleep(Duration::from_secs(5));
@@ -146,26 +162,17 @@ fn test_cores(
     core_results
 }
 
-fn test_core(
+fn test_core_with_method(
     cpu_test_method: &CpuTestMethod,
     core_id: usize,
-    time_to_test_per_core: Duration,
+    test_time: Duration,
 ) -> CpuTestResult {
-    println!(
-        "Testing core {} for {} seconds",
-        core_id,
-        time_to_test_per_core.as_secs()
-    );
 
     // Define the shared variables
     let pid = Arc::new(Mutex::new(0));
     let verification_failed = Arc::new(Mutex::new(false));
     let time_up = Arc::new(Mutex::new(false));
     let test_program_process = Arc::new(Mutex::new(None));
-
-    // Define the start and end time for the test
-    let start_time = Utc::now();
-    let end_time = start_time + time_to_test_per_core;
 
     // Thread that starts the test program process
     let pid_for_core_test = pid.clone();
@@ -182,6 +189,10 @@ fn test_core(
 
     // Wait a bit for the test program process to start
     thread::sleep(Duration::from_secs(3));
+
+    // Define the start and end time for the test
+    let start_time = Utc::now();
+    let end_time = start_time + test_time;
 
     // Thread that monitors the CPU usage
     let verification_failed_for_monitor_cpu = verification_failed.clone();
@@ -280,6 +291,7 @@ fn check_time_left(
         // Check if the time is up
         if Utc::now() > end_time {
             println!("Time is up");
+            println!();
             *time_up.lock().unwrap() = true;
 
             // Kill the test program processes
@@ -365,7 +377,7 @@ fn monitor_process(
             }
 
             let line = line.unwrap();
-            println!("{}", line);
+            //println!("{}", line);
 
             if line.contains(mprime::ERROR_MESSAGE) || line.contains(ycruncher::ERROR_MESSAGE) {
                 println!("#############");

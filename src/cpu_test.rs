@@ -1,7 +1,8 @@
+use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::io::BufRead;
-use std::ops::Div;
+use std::ops::{Div, Mul};
 use std::process::Child;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -12,13 +13,22 @@ use sysinfo::System;
 
 use crate::{mprime, process, ycruncher};
 
-#[derive(Debug, Clone, Copy)]
-pub struct CpuTestResult {
-    pub id: usize,
-    pub verification_failed: bool,
+#[derive(Debug, Clone)]
+pub struct CpuTestResponse {
+    pub core_id: usize,
     pub max_clock: u64,
     pub avg_clock: u64,
     pub min_clock: u64,
+    pub verification_failed: bool,
+    pub method_response: HashMap<CpuTestMethod, TestMethodResponse>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TestMethodResponse {
+    pub method: CpuTestMethod,
+    pub state: CpuTestMethodStatus,
+    pub current_secs: u64,
+    pub total_secs: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -28,62 +38,90 @@ pub struct CpuTestConfig {
     pub test_methods: Vec<CpuTestMethod>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum CpuTestMethod {
     Prime95,
     YCruncher,
 }
 
-pub fn run(config: CpuTestConfig) -> HashMap<usize, CpuTestResult> {
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum CpuTestMethodStatus {
+    Idle,
+    Testing,
+    Success,
+    Failed,
+}
+
+pub fn run(config: CpuTestConfig, test_results: Arc<Mutex<HashMap<usize, CpuTestResponse>>>) {
     mprime::initialize();
     ycruncher::initialize();
 
-    let cores_to_test = get_cores_to_test(&config.cores_to_test, get_physical_cores());
+    let duration = &config.duration_per_core;
 
-    let duration = config.duration_per_core;
+    let time_to_test_per_core = parse_duration::parse(duration).unwrap();
 
-    let time_to_test_per_core = parse_duration::parse(&duration).unwrap();
+    let cores_to_test = config.cores_to_test;
 
-    let response = test_cores(config.test_methods, &cores_to_test, time_to_test_per_core);
+    // Print total duration
+    println!(
+        "\nTotal duration will be: {}\n",
+        pretty_print(time_to_test_per_core.mul(cores_to_test.len() as u32))
+    );
 
-    response
+    test_cores(
+        config.test_methods,
+        &cores_to_test,
+        time_to_test_per_core,
+        test_results,
+    )
 }
 
-fn merge_responses(test_responses: Vec<CpuTestResult>) -> CpuTestResult {
-    let mut verification_failed = false;
-    let mut max_clock = 0;
-    let mut min_clock = 0;
-    let mut avg_clock = 0;
+pub fn initialize_response(
+    config: &CpuTestConfig,
+    test_results: &Arc<Mutex<HashMap<usize, CpuTestResponse>>>,
+    time_to_test_per_core: &str,
+) {
+    for core_id in &config.cores_to_test {
+        let mut test_result = CpuTestResponse {
+            core_id: *core_id,
+            max_clock: u64::MIN,
+            avg_clock: u64::MIN,
+            min_clock: u64::MAX,
+            verification_failed: false,
+            method_response: HashMap::new(),
+        };
 
-    for response in &test_responses {
-        if response.verification_failed {
-            verification_failed = true;
+        for cpu_test_method in &config.test_methods {
+            let method_response = TestMethodResponse {
+                method: *cpu_test_method,
+                state: CpuTestMethodStatus::Idle,
+                current_secs: 0,
+                total_secs: parse_duration::parse(time_to_test_per_core)
+                    .unwrap()
+                    .as_secs(),
+            };
+
+            test_result
+                .method_response
+                .insert(*cpu_test_method, method_response);
         }
 
-        if response.max_clock > max_clock {
-            max_clock = response.max_clock;
-        }
-
-        if response.min_clock < min_clock {
-            min_clock = response.min_clock;
-        }
-
-        avg_clock += response.avg_clock;
-    }
-
-    avg_clock /= test_responses.len() as u64;
-
-    CpuTestResult {
-        id: test_responses[0].id,
-        verification_failed,
-        max_clock,
-        min_clock,
-        avg_clock,
+        test_results.lock().unwrap().insert(*core_id, test_result);
     }
 }
 
-fn get_cores_to_test(cores_to_test: &[usize], physical_core_count: usize) -> Vec<usize> {
-    let mut cores_to_test: Vec<usize> = cores_to_test.to_vec();
+/// Pretty prints the duration in a human-readable format
+fn pretty_print(duration: Duration) -> String {
+    let seconds = duration.as_secs();
+    let hours = seconds / 3600;
+    let minutes = (seconds % 3600) / 60;
+    let seconds = seconds % 60;
+
+    format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+}
+
+pub fn get_cores_to_test(cores_to_test: &str, physical_core_count: usize) -> Vec<usize> {
+    let mut cores_to_test: Vec<usize> = cpu_core_string_to_vec(cores_to_test);
 
     // If cores_to_test is empty fill with all physical cores
     if cores_to_test.is_empty() {
@@ -103,12 +141,24 @@ fn get_cores_to_test(cores_to_test: &[usize], physical_core_count: usize) -> Vec
     cores_to_test
 }
 
+fn cpu_core_string_to_vec(cores_to_test: &str) -> Vec<usize> {
+    // if string is empty or contains only whitespace, return an empty vector
+    if cores_to_test.trim().is_empty() {
+        return vec![];
+    }
+
+    cores_to_test
+        .split(',')
+        .map(|s| s.trim().parse::<usize>().unwrap())
+        .collect()
+}
+
 // test for get_cores_to_test
 #[test]
 fn test_get_cores_to_test() {
-    let cores_to_test = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 4, 3];
+    let cores_to_test = "0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 4, 3";
     let physical_core_count = 8;
-    let cores_to_test = get_cores_to_test(&cores_to_test, physical_core_count);
+    let cores_to_test = get_cores_to_test(cores_to_test, physical_core_count);
     assert_eq!(cores_to_test, vec![0, 7, 1, 6, 2, 5, 3, 4]);
 }
 
@@ -116,9 +166,8 @@ fn test_cores(
     cpu_test_methods: Vec<CpuTestMethod>,
     core_ids: &Vec<usize>,
     time_to_test_per_core: Duration,
-) -> HashMap<usize, CpuTestResult> {
-    let mut core_results = HashMap::new();
-
+    test_results: Arc<Mutex<HashMap<usize, CpuTestResponse>>>,
+) {
     for core_id in core_ids {
         let core_id = *core_id;
 
@@ -130,8 +179,6 @@ fn test_cores(
         );
         println!("===================================");
 
-        let mut result_from_all_test_methods: Vec<CpuTestResult> = vec![];
-
         for cpu_test_method in &cpu_test_methods {
             let time_per_method = time_to_test_per_core.div(cpu_test_methods.len() as u32);
 
@@ -141,36 +188,56 @@ fn test_cores(
             );
 
             // Test the core for the given method
-            let cpu_test_result = test_core_with_method(cpu_test_method, core_id, time_per_method);
-
-            // Store the result of all test methods
-            result_from_all_test_methods.push(cpu_test_result);
+            test_core_with_method(
+                cpu_test_method,
+                core_id,
+                time_per_method,
+                test_results.clone(),
+            );
 
             // If cpu test result is failed, break earls the loop,
             // we do not need to test the other methods
-            if cpu_test_result.verification_failed {
+            if test_results.lock().unwrap()[&core_id].verification_failed {
                 break;
             }
 
             // Wait 5 seconds to cool down the CPU
             thread::sleep(Duration::from_secs(5));
         }
-
-        core_results.insert(core_id, merge_responses(result_from_all_test_methods));
     }
+}
 
-    core_results
+fn set_test_method_status(
+    test_results: Arc<Mutex<HashMap<usize, CpuTestResponse>>>,
+    core_id: &usize,
+    cpu_test_method: &CpuTestMethod,
+    status: CpuTestMethodStatus,
+) {
+    let mut test_results = test_results.lock().unwrap();
+    let test_result = test_results.get_mut(core_id).unwrap();
+    let method_response = test_result
+        .method_response
+        .get_mut(cpu_test_method)
+        .unwrap();
+    method_response.state = status;
 }
 
 fn test_core_with_method(
     cpu_test_method: &CpuTestMethod,
     core_id: usize,
     test_time: Duration,
-) -> CpuTestResult {
+    test_results: Arc<Mutex<HashMap<usize, CpuTestResponse>>>,
+) {
+    // Set the state of the method to TESTING
+    set_test_method_status(
+        test_results.clone(),
+        &core_id,
+        cpu_test_method,
+        CpuTestMethodStatus::Testing,
+    );
 
     // Define the shared variables
     let pid = Arc::new(Mutex::new(0));
-    let verification_failed = Arc::new(Mutex::new(false));
     let time_up = Arc::new(Mutex::new(false));
     let test_program_process = Arc::new(Mutex::new(None));
 
@@ -195,63 +262,64 @@ fn test_core_with_method(
     let end_time = start_time + test_time;
 
     // Thread that monitors the CPU usage
-    let verification_failed_for_monitor_cpu = verification_failed.clone();
+    let test_results_for_monitor_cpu = test_results.clone();
     let time_up_for_monitor_cpu = time_up.clone();
     let monitor_cpu_thread = thread::spawn(move || {
         monitor_cpu(
             core_id,
             time_up_for_monitor_cpu,
-            verification_failed_for_monitor_cpu,
+            test_results_for_monitor_cpu,
         )
     });
 
     // Thread that monitors the prime95 process output for errors
     let time_up_for_monitor_process = time_up.clone();
-    let verification_failed_for_monitor_process = verification_failed.clone();
+    let test_results_for_monitor_process = test_results.clone();
     let mprime_process_for_monitor_process = test_program_process.clone();
     let monitor_process_thread = thread::spawn(move || {
         monitor_process(
             core_id,
             time_up_for_monitor_process,
-            verification_failed_for_monitor_process,
+            test_results_for_monitor_process,
             mprime_process_for_monitor_process,
         );
     });
 
     // Thread that checks if the time to test per core has passed
     let time_up_for_time_tester = time_up.clone();
-    let verification_failed_for_time_tester = verification_failed.clone();
+    let test_results_for_time_tester = test_results.clone();
     let core_test_timer_thread = thread::spawn(move || {
         check_time_left(
+            core_id,
+            &cpu_test_method,
+            start_time,
             end_time,
             time_up_for_time_tester,
-            verification_failed_for_time_tester,
+            test_results_for_time_tester,
         );
     });
 
     // Wait for all threads to finish
     test_program_thread.join().unwrap();
-    let clocks = monitor_cpu_thread.join().unwrap();
+    monitor_cpu_thread.join().unwrap();
     monitor_process_thread.join().unwrap();
     core_test_timer_thread.join().unwrap();
 
-    // Check if the verification failed
-    let verification_failed = *verification_failed.lock().unwrap();
-
-    build_test_result(core_id, clocks, verification_failed)
-}
-
-fn build_test_result(core_id: usize, clocks: Vec<u64>, verification_failed: bool) -> CpuTestResult {
-    let max_clock = *clocks.iter().max().unwrap();
-    let min_clock = *clocks.iter().min().unwrap();
-    let avg_clock = clocks.iter().sum::<u64>() / clocks.len() as u64;
-
-    CpuTestResult {
-        id: core_id,
-        verification_failed,
-        max_clock,
-        min_clock,
-        avg_clock,
+    // Set the state of the method to SUCCESS if the verification did not fail
+    if !test_results.lock().unwrap()[&core_id].verification_failed {
+        set_test_method_status(
+            test_results.clone(),
+            &core_id,
+            &cpu_test_method,
+            CpuTestMethodStatus::Success,
+        );
+    } else {
+        set_test_method_status(
+            test_results.clone(),
+            &core_id,
+            &cpu_test_method,
+            CpuTestMethodStatus::Failed,
+        );
     }
 }
 
@@ -283,9 +351,12 @@ fn dedup<T: Eq + Hash + Copy>(v: &mut Vec<T>) {
 }
 
 fn check_time_left(
+    physical_core_id: usize,
+    cpu_test_method: &CpuTestMethod,
+    start_time: DateTime<Utc>,
     end_time: DateTime<Utc>,
     time_up: Arc<Mutex<bool>>,
-    verification_failed: Arc<Mutex<bool>>,
+    test_results: Arc<Mutex<HashMap<usize, CpuTestResponse>>>,
 ) {
     loop {
         // Check if the time is up
@@ -301,12 +372,21 @@ fn check_time_left(
         }
 
         // Check if the verification failed
-        if *verification_failed.lock().unwrap() {
+        if test_results.lock().unwrap()[&physical_core_id].verification_failed {
             // Kill the rest program processes
             process::kill();
 
             break;
         }
+
+        // Update current_secs
+        let mut test_results = test_results.lock().unwrap();
+        let test_result = test_results.get_mut(&physical_core_id).unwrap();
+        let method_response = test_result
+            .method_response
+            .get_mut(cpu_test_method)
+            .unwrap();
+        method_response.current_secs = (Utc::now() - start_time).num_seconds() as u64;
 
         // Wait a second
         thread::sleep(Duration::from_secs(1));
@@ -336,13 +416,14 @@ fn start_test_program_for_core(
 fn monitor_cpu(
     physical_core_id: usize,
     time_up: Arc<Mutex<bool>>,
-    verification_failed: Arc<Mutex<bool>>,
-) -> Vec<u64> {
-    let mut clocks = vec![];
+    test_results: Arc<Mutex<HashMap<usize, CpuTestResponse>>>,
+) {
     let mut sys = System::new();
     loop {
         // Check if time is up or if the verification failed
-        if *time_up.lock().unwrap() || *verification_failed.lock().unwrap() {
+        let verification_failed =
+            test_results.lock().unwrap()[&physical_core_id].verification_failed;
+        if *time_up.lock().unwrap() || verification_failed {
             break;
         }
 
@@ -350,19 +431,23 @@ fn monitor_cpu(
         sys.refresh_cpu();
         let logical_core_id = physical_core_id * 2;
         let current_freq = sys.cpus()[logical_core_id].frequency();
-        clocks.push(current_freq);
+
+        // Update clocks in the test results
+        let mut test_results = test_results.lock().unwrap();
+        let test_result = test_results.get_mut(&physical_core_id).unwrap();
+        test_result.max_clock = std::cmp::max(test_result.max_clock, current_freq);
+        test_result.min_clock = std::cmp::min(test_result.min_clock, current_freq);
+        test_result.avg_clock = (test_result.avg_clock + current_freq) / 2;
 
         // Wait a second
         thread::sleep(Duration::from_secs(1));
     }
-
-    clocks
 }
 
 fn monitor_process(
     physical_core_id: usize,
     time_up: Arc<Mutex<bool>>,
-    verification_failed: Arc<Mutex<bool>>,
+    test_results: Arc<Mutex<HashMap<usize, CpuTestResponse>>>,
     mprime_process: Arc<Mutex<Option<Child>>>,
 ) {
     if let Some(mprime_process) = &mut *mprime_process.lock().unwrap() {
@@ -384,7 +469,10 @@ fn monitor_process(
                 println!("Verification failed for core {}", physical_core_id);
                 println!("#############");
 
-                *verification_failed.lock().unwrap() = true;
+                // Set the verification failed flag
+                let mut test_results = test_results.lock().unwrap();
+                let test_result = test_results.get_mut(&physical_core_id).unwrap();
+                test_result.verification_failed = true;
 
                 break;
             }
@@ -392,7 +480,7 @@ fn monitor_process(
     }
 }
 
-fn get_physical_cores() -> usize {
+pub fn get_physical_cores() -> usize {
     let mut sys = System::new();
     sys.refresh_cpu();
     sys.physical_core_count().unwrap()

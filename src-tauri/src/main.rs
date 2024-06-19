@@ -4,8 +4,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use tauri::Manager;
-
 use crate::cpu_test::CpuTestResponse;
 
 mod cpu_test;
@@ -19,13 +17,9 @@ pub struct AppState {
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
         .manage(AppState {
             test_results: Arc::new(Mutex::new(HashMap::new())),
-        })
-        .setup(|app| {
-            let title = format!("PBO Assistant {}", env!("CARGO_PKG_VERSION"));
-            app.get_window("main").unwrap().set_title(&title).unwrap();
-            Ok(())
         })
         .invoke_handler(tauri::generate_handler![start_test])
         .run(tauri::generate_context!())

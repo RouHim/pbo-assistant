@@ -1,8 +1,7 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+
+use gtk::{glib, prelude::*};
 
 use crate::cpu_test::CpuTestResponse;
 
@@ -15,19 +14,33 @@ pub struct AppState {
     pub test_results: Arc<Mutex<HashMap<usize, CpuTestResponse>>>,
 }
 
-fn main() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
-        .manage(AppState {
-            test_results: Arc::new(Mutex::new(HashMap::new())),
-        })
-        .invoke_handler(tauri::generate_handler![start_test])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+fn main() -> glib::ExitCode {
+    let application = gtk::Application::builder()
+        .application_id("rouhim.pbo-assistant")
+        .build();
+    application.connect_activate(build_ui);
+    application.run()
 }
 
-#[tauri::command]
-async fn start_test() -> Result<(), String> {
+fn build_ui(application: &gtk::Application) {
+    let window = gtk::ApplicationWindow::new(application);
+
+    window.set_title(Some("PBO-Assistant"));
+    window.set_default_size(350, 70);
+
+    let button = gtk::Button::with_label("Start test");
+    button.connect_clicked(move |_| {
+        start_test();
+    });
+
+    window.set_child(Some(&button));
+
+    window.present();
+}
+
+fn start_test() {
+    println!("Starting test");
+
     let core_to_test = "";
 
     let cores_to_test = cpu_test::get_cores_to_test(core_to_test, cpu_test::get_physical_cores());
@@ -58,6 +71,4 @@ async fn start_test() -> Result<(), String> {
     for cpu_result in values {
         println!("{:?}", cpu_result);
     }
-
-    Ok(())
 }

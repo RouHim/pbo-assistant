@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 gtk = { version = "0.8.2", package = "gtk4", features = ["v4_14"] }
+adw = { version = "0.6.0", package = "libadwaita", features = ["v1_5"] }
 sysinfo = "0.30.12"
 chrono = "0.4.38"
 parse_duration = "2.1.1"

@@ -23,19 +23,14 @@ fn build_ui(application: &adw::Application, app_state: Arc<Mutex<AppState>>) {
 
     window.set_title(Some("PBO-Assistant"));
     window.set_default_size(1024, 768);
-    window.set_titlebar(Some(&build_titlebar()));
+    window.set_titlebar(Some(&build_header_bar()));
 
     // Create Vertical base layout
     let base_layout = gtk::Box::new(gtk::Orientation::Vertical, 0);
 
-    // Create a horizontal layout
-    let config_layout = build_config_layout();
-
     // Create grid layout
     let core_grid = gtk::Grid::new();
 
-
-    base_layout.append(&config_layout);
     base_layout.append(&core_grid);
 
     window.set_child(Some(&base_layout));
@@ -43,7 +38,7 @@ fn build_ui(application: &adw::Application, app_state: Arc<Mutex<AppState>>) {
     window.present();
 }
 
-fn build_titlebar() -> gtk::HeaderBar {
+fn build_header_bar() -> gtk::HeaderBar {
     let header_bar = gtk::HeaderBar::new();
     header_bar.set_title_widget(Some(&gtk::Label::new(Some("PBO-Assistant"))));
     header_bar.set_show_title_buttons(true);
@@ -59,7 +54,6 @@ fn build_titlebar() -> gtk::HeaderBar {
     start_test_button.connect_clicked(move |_| {
         start_test();
     });
-
     header_bar.pack_start(&start_test_button);
 
     // Add settings sandwich button to gtk header bar
@@ -68,21 +62,21 @@ fn build_titlebar() -> gtk::HeaderBar {
         .tooltip_text("Settings")
         .margin_start(10)
         .build();
+    header_bar.pack_end(&settings_button);
+
+    // Build settings popover
     let popover = gtk::Popover::new();
-
-    let label = gtk::Label::new(Some("This is a popover"));
-    popover.set_child(Some(&label));
-
+    popover.set_child(Some(&build_config_layout()));
+    popover.set_parent(&settings_button);
     settings_button.connect_clicked(move |_| {
         popover.popup();
     });
-    header_bar.pack_end(&settings_button);
 
     header_bar
 }
 
 fn build_config_layout() -> gtk::Box {
-    let config_layout = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    let config_layout = gtk::Box::new(gtk::Orientation::Vertical, 10);
 
     // Add textfield for time
     let time_textfield = gtk::Entry::new();

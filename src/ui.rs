@@ -2,10 +2,16 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use gtk::glib::ExitCode;
-use gtk::prelude::{ApplicationExt, ApplicationExtManual, BoxExt, ButtonExt, EditableExt, GtkWindowExt, PopoverExt, WidgetExt};
+use gtk::prelude::{
+    ApplicationExt, ApplicationExtManual, BoxExt, ButtonExt, EditableExt, EntryExt, GtkWindowExt,
+    PopoverExt, WidgetExt,
+};
+use strum::IntoEnumIterator;
 
-use crate::{AppState, cpu_test};
+use cpu_test::CpuTestMethod;
+
 use crate::cpu_test::CpuTestResponse;
+use crate::{cpu_test, AppState};
 
 pub fn start_ui_application(app_state: Arc<Mutex<AppState>>) -> ExitCode {
     let application = adw::Application::builder()
@@ -23,7 +29,7 @@ fn build_ui(application: &adw::Application, app_state: Arc<Mutex<AppState>>) {
 
     window.set_title(Some("PBO-Assistant"));
     window.set_default_size(1024, 768);
-    window.set_titlebar(Some(&build_header_bar()));
+    window.set_titlebar(Some(&build_header_bar(&app_state)));
 
     // Create Vertical base layout
     let base_layout = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -38,11 +44,10 @@ fn build_ui(application: &adw::Application, app_state: Arc<Mutex<AppState>>) {
     window.present();
 }
 
-fn build_header_bar() -> gtk::HeaderBar {
+fn build_header_bar(app_state: &Arc<Mutex<AppState>>) -> gtk::HeaderBar {
     let header_bar = gtk::HeaderBar::new();
     header_bar.set_title_widget(Some(&gtk::Label::new(Some("PBO-Assistant"))));
     header_bar.set_show_title_buttons(true);
-
 
     // Add start test button to gtk header bar
     let start_test_button = gtk::Button::builder()
@@ -66,7 +71,7 @@ fn build_header_bar() -> gtk::HeaderBar {
 
     // Build settings popover
     let popover = gtk::Popover::new();
-    popover.set_child(Some(&build_config_layout()));
+    popover.set_child(Some(&build_config_layout(app_state)));
     popover.set_parent(&settings_button);
     settings_button.connect_clicked(move |_| {
         popover.popup();
@@ -75,26 +80,74 @@ fn build_header_bar() -> gtk::HeaderBar {
     header_bar
 }
 
-fn build_config_layout() -> gtk::Box {
+fn build_config_layout(app_state: &Arc<Mutex<AppState>>) -> gtk::Box {
+    let app_state = app_state.lock().unwrap();
+    let time_per_core = app_state.test_config.duration_per_core.clone();
+    let cores_to_test = app_state.test_config.cores_to_test.clone();
+    let active_test_methods = app_state.test_config.test_methods.clone();
+
     let config_layout = gtk::Box::new(gtk::Orientation::Vertical, 10);
 
     // Add textfield for time
     let time_textfield = gtk::Entry::new();
-    time_textfield.set_text("20s");
-    config_layout.append(&time_textfield);
+    time_textfield.set_text(&time_per_core);
+    time_textfield.set_placeholder_text(Some("10m"));
+    time_textfield.set_tooltip_text(Some("Duration per core. E.g. 10m, 20s, 1h"));
+    config_layout.append(&build_settings_row(
+        "Runtime per Core",
+        time_textfield.into(),
+    ));
 
     // Add textfield for cores
     let cores_textfield = gtk::Entry::new();
-    cores_textfield.set_text("0,1,2,3");
-    config_layout.append(&cores_textfield);
+    cores_textfield.set_text(
+        &cores_to_test
+            .iter()
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>()
+            .join(","),
+    );
+    cores_textfield.set_tooltip_text(Some("Comma separated list of cores to test. E.g. 0,1,2,3"));
+    config_layout.append(&build_settings_row("Cores to Test", cores_textfield.into()));
 
-    // Add multiselect or combobox for test methods
-    let test_methods = gtk::ComboBoxText::new();
-    test_methods.append_text("Prime95");
-    test_methods.append_text("YCruncher");
-    config_layout.append(&test_methods);
+    // Load all enum values from test method enum
+    let all_test_methods = cpu_test::CpuTestMethod::iter().collect::<Vec<CpuTestMethod>>();
+
+    // For each test method add a switch
+    for test_method in all_test_methods {
+        let switch = gtk::Switch::new();
+        switch.set_active(active_test_methods.contains(&test_method));
+        switch.set_tooltip_text(Some("If multiple test methods are selected, they run one after the other, divided by the duration per core"));
+
+        config_layout.append(&build_settings_row(&test_method.to_string(), switch.into()));
+    }
 
     config_layout
+}
+
+/// Builds a row with a label and a widget
+/// The label is left aligned and the widget is right aligned
+/// The widget is expected to be a gtk::Widget
+/// The label_text is the text that will be displayed on the left side
+/// # Parameters
+/// * `label_text` - The text that will be displayed on the left side
+/// * `widget` - The generic widget that will be displayed on the right side
+fn build_settings_row(label_text: &str, widget: gtk::Widget) -> gtk::Box {
+    // Horizontal layout with label
+    let horizontal_layout = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+    horizontal_layout.set_hexpand(true);
+
+    // Create the label
+    let label = gtk::Label::new(Some(&label_text));
+
+    // Create the spacer
+    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    spacer.set_hexpand(true);
+
+    horizontal_layout.append(&label);
+    horizontal_layout.append(&spacer);
+    horizontal_layout.append(&widget);
+    horizontal_layout
 }
 
 fn start_test() {

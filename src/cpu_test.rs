@@ -9,6 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use strum_macros::{Display, EnumIter};
 use sysinfo::System;
 
 use crate::{mprime, process, ycruncher};
@@ -38,13 +39,13 @@ pub struct CpuTestConfig {
     pub test_methods: Vec<CpuTestMethod>,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, EnumIter, Display)]
 pub enum CpuTestMethod {
     Prime95,
     YCruncher,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, EnumIter, Display)]
 pub enum CpuTestMethodStatus {
     Idle,
     Testing,

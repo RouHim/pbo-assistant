@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-
+use gtk::glib;
 use gtk::glib::ExitCode;
 use gtk::prelude::{
     ApplicationExt, ApplicationExtManual, BoxExt, ButtonExt, EditableExt, EntryExt, GtkWindowExt,
@@ -81,10 +81,10 @@ fn build_header_bar(app_state: &Arc<Mutex<AppState>>) -> gtk::HeaderBar {
 }
 
 fn build_config_layout(app_state: &Arc<Mutex<AppState>>) -> gtk::Box {
-    let app_state = app_state.lock().unwrap();
-    let time_per_core = app_state.test_config.duration_per_core.clone();
-    let cores_to_test = app_state.test_config.cores_to_test.clone();
-    let active_test_methods = app_state.test_config.test_methods.clone();
+    let app_state_locked = app_state.lock().unwrap();
+    let time_per_core = app_state_locked.test_config.duration_per_core.clone();
+    let cores_to_test = app_state_locked.test_config.cores_to_test.clone();
+    let active_test_methods = app_state_locked.test_config.test_methods.clone();
 
     let config_layout = gtk::Box::new(gtk::Orientation::Vertical, 10);
 
@@ -95,8 +95,13 @@ fn build_config_layout(app_state: &Arc<Mutex<AppState>>) -> gtk::Box {
     time_textfield.set_tooltip_text(Some("Duration per core. E.g. 10m, 20s, 1h"));
     config_layout.append(&build_settings_row(
         "Runtime per Core",
-        time_textfield.into(),
+        time_textfield.clone().into(),
     ));
+    let app_state_for_time = app_state.clone();
+    time_textfield.connect_changed(move |textfield| {
+        let mut app_state = app_state_for_time.lock().unwrap();
+        app_state.test_config.duration_per_core = textfield.text().to_string();
+    });
 
     // Add textfield for cores
     let cores_textfield = gtk::Entry::new();
@@ -108,7 +113,16 @@ fn build_config_layout(app_state: &Arc<Mutex<AppState>>) -> gtk::Box {
             .join(","),
     );
     cores_textfield.set_tooltip_text(Some("Comma separated list of cores to test. E.g. 0,1,2,3"));
-    config_layout.append(&build_settings_row("Cores to Test", cores_textfield.into()));
+    config_layout.append(&build_settings_row("Cores to Test", cores_textfield.clone().into()));
+    let app_state_for_cores = app_state.clone();
+    cores_textfield.connect_changed(move |textfield| {
+        let mut app_state = app_state_for_cores.lock().unwrap();
+        app_state.test_config.cores_to_test = textfield
+            .text()
+            .split(',')
+            .map(|x| x.parse().unwrap())
+            .collect();
+    });
 
     // Load all enum values from test method enum
     let all_test_methods = cpu_test::CpuTestMethod::iter().collect::<Vec<CpuTestMethod>>();
@@ -118,8 +132,19 @@ fn build_config_layout(app_state: &Arc<Mutex<AppState>>) -> gtk::Box {
         let switch = gtk::Switch::new();
         switch.set_active(active_test_methods.contains(&test_method));
         switch.set_tooltip_text(Some("If multiple test methods are selected, they run one after the other, divided by the duration per core"));
+        let app_state_for_test_method = app_state.clone();
+        switch.connect_state_set(move |switch, state| {
+            let mut app_state = app_state_for_test_method.lock().unwrap();
+            let test_methods = &mut app_state.test_config.test_methods;
+            if state {
+                test_methods.push(test_method);
+            } else {
+                test_methods.retain(|x| x != &test_method);
+            }
+            glib::signal::Inhibit(false)
+        });
 
-        config_layout.append(&build_settings_row(&test_method.to_string(), switch.into()));
+        config_layout.append(&build_settings_row(&test_method.to_string(), switch.clone().into()));
     }
 
     config_layout

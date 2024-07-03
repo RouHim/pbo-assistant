@@ -10,7 +10,12 @@ use strum::IntoEnumIterator;
 
 use cpu_test::CpuTestMethod;
 
-use crate::{cpu_test, AppState};
+use crate::{AppState, cpu_test};
+
+#[derive(Debug)]
+pub struct UiElements {
+    pub cpu_core_grid: Vec<gtk::Grid>,
+}
 
 pub fn start_ui_application(app_state: Arc<Mutex<AppState>>) -> ExitCode {
     let application = adw::Application::builder()
@@ -24,6 +29,9 @@ pub fn start_ui_application(app_state: Arc<Mutex<AppState>>) -> ExitCode {
 }
 
 fn build_ui(application: &adw::Application, app_state: Arc<Mutex<AppState>>) {
+    // Create grid layout
+    let cpu_core_grid = gtk::Grid::new();
+    
     let window = gtk::ApplicationWindow::new(application);
 
     window.set_title(Some("PBO-Assistant"));
@@ -33,10 +41,7 @@ fn build_ui(application: &adw::Application, app_state: Arc<Mutex<AppState>>) {
     // Create Vertical base layout
     let base_layout = gtk::Box::new(gtk::Orientation::Vertical, 0);
 
-    // Create grid layout
-    let core_grid = gtk::Grid::new();
-
-    base_layout.append(&core_grid);
+    base_layout.append(&cpu_core_grid);
 
     window.set_child(Some(&base_layout));
 
@@ -189,13 +194,22 @@ fn start_test(app_state: &Arc<Mutex<AppState>>) {
 
     let cores_to_test = cpu_test::get_cores_to_test(core_to_test, cpu_test::get_physical_cores());
 
-    let config = cpu_test::CpuTestConfig {
-        duration_per_core: app_state_locked.test_config.duration_per_core.clone(),
-        cores_to_test,
-        test_methods: app_state_locked.test_config.test_methods.clone(),
-    };
+    // Adjust cores to test in app state
+    let mut app_state_mod = app_state.lock().unwrap();
+    app_state_mod.test_config.cores_to_test = cores_to_test.clone();
+    drop(app_state_mod);
 
-    cpu_test::initialize_response(&config, &app_state.clone(), &config.duration_per_core);
+    cpu_test::initialize_response(&app_state.clone());
 
-    cpu_test::run(config, app_state.clone());
+    // Render loop for cpus
+    build_render_loop(app_state.clone());
+
+    cpu_test::run(app_state.clone());
+}
+
+fn build_render_loop(app_state: Arc<Mutex<AppState>>) {
+    // First add for each cpu core a layout to the cpu grid view
+    
+    // Then start a dedicated thread that checks every second the app state
+    // And adjust the cpu layout accordingly
 }

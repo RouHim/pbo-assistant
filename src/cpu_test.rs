@@ -12,7 +12,7 @@ use chrono::{DateTime, Utc};
 use strum_macros::{Display, EnumIter};
 use sysinfo::System;
 
-use crate::{mprime, process, ycruncher, AppState};
+use crate::{AppState, mprime, process, ycruncher};
 
 #[derive(Debug, Clone)]
 pub struct CpuTestResponse {
@@ -53,10 +53,11 @@ pub enum CpuTestMethodStatus {
     Failed,
 }
 
-pub fn run(config: CpuTestConfig, app_state: Arc<Mutex<AppState>>) {
+pub fn run(app_state: Arc<Mutex<AppState>>) {
     mprime::initialize();
     ycruncher::initialize();
-
+    let config = app_state.lock().unwrap().test_config.clone();
+    
     let duration = &config.duration_per_core;
 
     let time_to_test_per_core = parse_duration::parse(duration).unwrap();
@@ -80,10 +81,11 @@ pub fn run(config: CpuTestConfig, app_state: Arc<Mutex<AppState>>) {
 /// Initializes the test results with the given configuration
 /// The test results will be stored in the app_state
 pub fn initialize_response(
-    config: &CpuTestConfig,
     app_state: &Arc<Mutex<AppState>>,
-    time_to_test_per_core: &str,
 ) {
+    let config = app_state.lock().unwrap().test_config.clone();
+    let time_to_test_per_core = &config.duration_per_core;
+
     for core_id in &config.cores_to_test {
         let mut test_result = CpuTestResponse {
             core_id: *core_id,

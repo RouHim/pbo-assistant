@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use gtk::glib;
+
+use adw::glib::Propagation;
 use gtk::glib::ExitCode;
 use gtk::prelude::{
     ApplicationExt, ApplicationExtManual, BoxExt, ButtonExt, EditableExt, EntryExt, GtkWindowExt,
@@ -10,7 +10,6 @@ use strum::IntoEnumIterator;
 
 use cpu_test::CpuTestMethod;
 
-use crate::cpu_test::CpuTestResponse;
 use crate::{cpu_test, AppState};
 
 pub fn start_ui_application(app_state: Arc<Mutex<AppState>>) -> ExitCode {
@@ -56,8 +55,9 @@ fn build_header_bar(app_state: &Arc<Mutex<AppState>>) -> gtk::HeaderBar {
         .margin_start(0)
         .css_classes(vec!["suggested-action"])
         .build();
+    let app_state_for_start = app_state.clone();
     start_test_button.connect_clicked(move |_| {
-        start_test();
+        start_test(&app_state_for_start);
     });
     header_bar.pack_start(&start_test_button);
 
@@ -71,7 +71,7 @@ fn build_header_bar(app_state: &Arc<Mutex<AppState>>) -> gtk::HeaderBar {
 
     // Build settings popover
     let popover = gtk::Popover::new();
-    popover.set_child(Some(&build_config_layout(app_state)));
+    popover.set_child(Some(&build_config_layout(&app_state.clone())));
     popover.set_parent(&settings_button);
     settings_button.connect_clicked(move |_| {
         popover.popup();
@@ -113,7 +113,10 @@ fn build_config_layout(app_state: &Arc<Mutex<AppState>>) -> gtk::Box {
             .join(","),
     );
     cores_textfield.set_tooltip_text(Some("Comma separated list of cores to test. E.g. 0,1,2,3"));
-    config_layout.append(&build_settings_row("Cores to Test", cores_textfield.clone().into()));
+    config_layout.append(&build_settings_row(
+        "Cores to Test",
+        cores_textfield.clone().into(),
+    ));
     let app_state_for_cores = app_state.clone();
     cores_textfield.connect_changed(move |textfield| {
         let mut app_state = app_state_for_cores.lock().unwrap();
@@ -133,18 +136,21 @@ fn build_config_layout(app_state: &Arc<Mutex<AppState>>) -> gtk::Box {
         switch.set_active(active_test_methods.contains(&test_method));
         switch.set_tooltip_text(Some("If multiple test methods are selected, they run one after the other, divided by the duration per core"));
         let app_state_for_test_method = app_state.clone();
-        switch.connect_state_set(move |switch, state| {
+        switch.connect_state_set(move |_, new_state| {
             let mut app_state = app_state_for_test_method.lock().unwrap();
             let test_methods = &mut app_state.test_config.test_methods;
-            if state {
+            if new_state {
                 test_methods.push(test_method);
             } else {
                 test_methods.retain(|x| x != &test_method);
             }
-            glib::signal::Inhibit(false)
+            Propagation::Proceed
         });
 
-        config_layout.append(&build_settings_row(&test_method.to_string(), switch.clone().into()));
+        config_layout.append(&build_settings_row(
+            &test_method.to_string(),
+            switch.clone().into(),
+        ));
     }
 
     config_layout
@@ -175,37 +181,21 @@ fn build_settings_row(label_text: &str, widget: gtk::Widget) -> gtk::Box {
     horizontal_layout
 }
 
-fn start_test() {
+fn start_test(app_state: &Arc<Mutex<AppState>>) {
     println!("Starting test");
 
-    let core_to_test = "";
+    let app_state_locked = app_state.lock().unwrap();
+    let core_to_test = app_state_locked.test_config.cores_to_test.clone();
 
     let cores_to_test = cpu_test::get_cores_to_test(core_to_test, cpu_test::get_physical_cores());
 
     let config = cpu_test::CpuTestConfig {
-        duration_per_core: "20s".to_string(),
+        duration_per_core: app_state_locked.test_config.duration_per_core.clone(),
         cores_to_test,
-        test_methods: vec![
-            cpu_test::CpuTestMethod::Prime95,
-            cpu_test::CpuTestMethod::YCruncher,
-        ],
+        test_methods: app_state_locked.test_config.test_methods.clone(),
     };
 
-    // Holds the global state of the test results
-    let test_results: Arc<Mutex<HashMap<usize, CpuTestResponse>>> =
-        Arc::new(Mutex::new(HashMap::new()));
+    cpu_test::initialize_response(&config, &app_state.clone(), &config.duration_per_core);
 
-    cpu_test::initialize_response(&config, &test_results, &config.duration_per_core);
-
-    cpu_test::run(config, test_results.clone());
-
-    let rest_results = test_results.lock().unwrap();
-    let mut values: Vec<&CpuTestResponse> = rest_results.values().collect();
-    values.sort_by(|a, b| a.core_id.cmp(&b.core_id));
-    println!();
-    println!();
-    println!();
-    for cpu_result in values {
-        println!("{:?}", cpu_result);
-    }
+    cpu_test::run(config, app_state.clone());
 }

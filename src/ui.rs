@@ -2,20 +2,12 @@ use std::sync::{Arc, Mutex};
 
 use adw::glib::Propagation;
 use gtk::glib::ExitCode;
-use gtk::prelude::{
-    ApplicationExt, ApplicationExtManual, BoxExt, ButtonExt, EditableExt, EntryExt, GtkWindowExt,
-    PopoverExt, WidgetExt,
-};
+use gtk::prelude::{ApplicationExt, ApplicationExtManual, BoxExt, ButtonExt, EditableExt, EntryExt, GridExt, GtkWindowExt, PopoverExt, WidgetExt};
 use strum::IntoEnumIterator;
 
 use cpu_test::CpuTestMethod;
 
 use crate::{AppState, cpu_test};
-
-#[derive(Debug)]
-pub struct UiElements {
-    pub cpu_core_grid: Vec<gtk::Grid>,
-}
 
 pub fn start_ui_application(app_state: Arc<Mutex<AppState>>) -> ExitCode {
     let application = adw::Application::builder()
@@ -29,8 +21,11 @@ pub fn start_ui_application(app_state: Arc<Mutex<AppState>>) -> ExitCode {
 }
 
 fn build_ui(application: &adw::Application, app_state: Arc<Mutex<AppState>>) {
-    // Create grid layout
+    // Create grid layout and add it to the app state
     let cpu_core_grid = gtk::Grid::new();
+    let mut app_state_locked = app_state.lock().unwrap();
+    app_state_locked.ui_elements.insert("cpu_core_grid".to_string(), cpu_core_grid.clone().into());
+    drop(app_state_locked);
     
     let window = gtk::ApplicationWindow::new(application);
 
@@ -209,6 +204,16 @@ fn start_test(app_state: &Arc<Mutex<AppState>>) {
 
 fn build_render_loop(app_state: Arc<Mutex<AppState>>) {
     // First add for each cpu core a layout to the cpu grid view
+    let app_state_locked = app_state.lock().unwrap();
+    let cpu_core_grid = app_state_locked.ui_elements.get("cpu_core_grid").unwrap().clone().downcast::<gtk::Grid>().unwrap();
+
+    // iterate over cores to test and create a layout for each core
+    for core in app_state_locked.test_config.cores_to_test.iter() {
+        let core_layout = gtk::Box::new(gtk::Orientation::Vertical, 5);
+        let core_label = gtk::Label::new(Some(&format!("Core {}", core)));
+        core_layout.append(&core_label);
+        cpu_core_grid.attach(&core_layout, *core as i32, 0, 1, 1);
+    }
     
     // Then start a dedicated thread that checks every second the app state
     // And adjust the cpu layout accordingly

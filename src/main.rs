@@ -5,7 +5,6 @@ use gtk::glib;
 use strum::IntoEnumIterator;
 
 use crate::cpu_test::CpuTestResponse;
-use crate::ui::UiElements;
 
 mod cpu_test;
 mod mprime;
@@ -17,7 +16,8 @@ mod ycruncher;
 pub struct AppState {
     pub test_results: HashMap<usize, CpuTestResponse>,
     pub test_config: cpu_test::CpuTestConfig,
-    pub ui_elements: UiElements,
+    // FIXME: gtk widget ist nicht transportsicher, muss evtl geboxt werden
+    pub ui_elements: HashMap<String, gtk::Widget>,
 }
 
 fn main() -> glib::ExitCode {
@@ -31,7 +31,7 @@ fn main() -> glib::ExitCode {
     let app_state = AppState {
         test_results: HashMap::new(),
         test_config: config,
-        ui_elements: UiElements {},
+        ui_elements: HashMap::new(),
     };
     let app_state = Arc::new(Mutex::new(app_state));
 

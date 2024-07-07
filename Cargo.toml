@@ -7,6 +7,9 @@ edition = "2021"
 gtk = { version = "0.8.2", package = "gtk4", features = ["v4_14"] }
 adw = { version = "0.6.0", package = "libadwaita", features = ["v1_5"] }
 glib = "0.19.9"
+gdk = "0.18.0"
+gio = "0.19.8"
+
 glib-macros = "0.19.9"
 sysinfo = "0.30.12"
 chrono = "0.4.38"

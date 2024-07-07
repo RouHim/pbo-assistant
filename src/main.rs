@@ -11,7 +11,7 @@ mod mprime;
 mod process;
 mod ui;
 mod ycruncher;
-mod ui_custom_box;
+mod ui_core_box_layout;
 
 #[derive(Debug)]
 pub struct AppState {

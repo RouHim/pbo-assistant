@@ -3,12 +3,12 @@ use std::sync::{Arc, Mutex};
 use adw::glib::Propagation;
 use gtk::{CompositeTemplate, CssProvider, Grid, TemplateChild};
 use gtk::glib::{closure_local, ExitCode};
-use gtk::prelude::{ApplicationExt, ApplicationExtManual, BoxExt, ButtonExt, EditableExt, EntryExt, GridExt, GtkWindowExt, ObjectExt, PopoverExt, WidgetExt};
+use gtk::prelude::{ApplicationExt, ApplicationExtManual, BoxExt, ButtonExt, EditableExt, EntryExt, GridExt, GtkWindowExt, ObjectExt, OrientableExt, PopoverExt, WidgetExt};
 use strum::IntoEnumIterator;
 
 use cpu_test::CpuTestMethod;
 
-use crate::{AppState, cpu_test};
+use crate::{AppState, cpu_test, ui_core_box_layout};
 
 pub fn start_ui_application(app_state: Arc<Mutex<AppState>>) -> ExitCode {
     let application = adw::Application::builder()
@@ -233,7 +233,7 @@ fn build_render_loop(app_state: Arc<Mutex<AppState>>, cpu_core_grid: &Grid) {
 
     // iterate over cores to test and create a layout for each core
     for core in cores_to_test.iter() {
-        let core_layout = build_core_layout(&core);
+        let core_layout = build_core_layout(core);
         cpu_core_grid.attach(&core_layout, *core as i32, 0, 1, 1);
 
         // Send test_done signal to core_layout
@@ -244,17 +244,21 @@ fn build_render_loop(app_state: Arc<Mutex<AppState>>, cpu_core_grid: &Grid) {
     // And adjust the cpu layout accordingly
 }
 
-fn build_core_layout(core: &&usize) -> gtk::Box {
-    let core_layout = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .margin_top(5)
-        .margin_bottom(5)
-        .margin_start(5)
-        .margin_end(5)
-        .height_request(100)
-        .width_request(100)
-        .css_classes(vec!["core-layout"])
-        .build();
+fn build_core_layout(core: &usize) -> gtk::Box {
+    let core_layout = ui_core_box_layout::CoreBoxLayout::new(*core as u32);
+
+    // Set orientation to vertical
+    core_layout.set_orientation(gtk::Orientation::Vertical);
+
+    // .orientation(gtk::Orientation::Vertical)
+    //     .margin_top(5)
+    //     .margin_bottom(5)
+    //     .margin_start(5)
+    //     .margin_end(5)
+    //     .height_request(100)
+    //     .width_request(100)
+    //     .css_classes(vec!["core-layout"])
+    //     .build();
 
 
     let core_label = gtk::Label::new(Some(&format!("Core {}", core)));

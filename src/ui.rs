@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
 
 use adw::glib::Propagation;
-use gtk::{CssProvider, Grid};
-use gtk::glib::ExitCode;
-use gtk::prelude::{ApplicationExt, ApplicationExtManual, BoxExt, ButtonExt, EditableExt, EntryExt, GridExt, GtkWindowExt, PopoverExt, WidgetExt};
+use gtk::{CompositeTemplate, CssProvider, Grid, TemplateChild};
+use gtk::glib::{closure_local, ExitCode};
+use gtk::prelude::{ApplicationExt, ApplicationExtManual, BoxExt, ButtonExt, EditableExt, EntryExt, GridExt, GtkWindowExt, ObjectExt, PopoverExt, WidgetExt};
 use strum::IntoEnumIterator;
 
 use cpu_test::CpuTestMethod;
@@ -235,6 +235,9 @@ fn build_render_loop(app_state: Arc<Mutex<AppState>>, cpu_core_grid: &Grid) {
     for core in cores_to_test.iter() {
         let core_layout = build_core_layout(&core);
         cpu_core_grid.attach(&core_layout, *core as i32, 0, 1, 1);
+
+        // Send test_done signal to core_layout
+        core_layout.emit_by_name::<()>("test_done", &[]);
     }
 
     // Then start a dedicated thread that checks every second the app state
@@ -257,5 +260,22 @@ fn build_core_layout(core: &&usize) -> gtk::Box {
     let core_label = gtk::Label::new(Some(&format!("Core {}", core)));
     core_layout.append(&core_label);
 
+    let frequency_label = gtk::Label::new(Some("Frequency: 0 MHz"));
+    core_layout.append(&frequency_label);
+
+    let load_label = gtk::Label::new(Some("Load: 0%"));
+    core_layout.append(&load_label);
+    
+    
+
+    core_layout.connect_closure(
+        "test_done",
+        false,
+        closure_local!(move || {
+            println!("Test done");
+        }),
+    );
+
     core_layout
 }
+

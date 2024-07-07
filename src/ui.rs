@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use adw::glib::Propagation;
 use gtk::glib::ExitCode;
+use gtk::{CssProvider, Grid};
 use gtk::prelude::{ApplicationExt, ApplicationExtManual, BoxExt, ButtonExt, EditableExt, EntryExt, GridExt, GtkWindowExt, PopoverExt, WidgetExt};
 use strum::IntoEnumIterator;
 
@@ -17,21 +18,41 @@ pub fn start_ui_application(app_state: Arc<Mutex<AppState>>) -> ExitCode {
         let app_state = app_state.clone();
         build_ui(application, app_state);
     });
+    application.connect_startup(|_| load_css());
     application.run()
 }
 
+fn load_css() {
+    // Load the CSS file and add it to the provider
+    let provider = CssProvider::new();
+    provider.load_from_string(include_str!("../assets/ui_style.css"));
+
+    // Add the provider to the default screen
+    gtk::style_context_add_provider_for_display(
+        &adw::gdk::Display::default().expect("Could not connect to a display."),
+        &provider,
+        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+    );
+}
+
 fn build_ui(application: &adw::Application, app_state: Arc<Mutex<AppState>>) {
-    // Create grid layout and add it to the app state
-    let cpu_core_grid = gtk::Grid::new();
-    let mut app_state_locked = app_state.lock().unwrap();
-    app_state_locked.ui_elements.insert("cpu_core_grid".to_string(), cpu_core_grid.clone().into());
-    drop(app_state_locked);
-    
     let window = gtk::ApplicationWindow::new(application);
+
+    // Create grid layout and add it to the app state
+    let cpu_core_grid = gtk::Grid::builder()
+        .row_spacing(5)
+        .column_spacing(5)
+        .margin_end(10)
+        .margin_start(10)
+        .margin_top(10)
+        .margin_bottom(10)
+        .hexpand(true)
+        .vexpand(true)
+        .build();
 
     window.set_title(Some("PBO-Assistant"));
     window.set_default_size(1024, 768);
-    window.set_titlebar(Some(&build_header_bar(&app_state)));
+    window.set_titlebar(Some(&build_header_bar(&app_state, &cpu_core_grid)));
 
     // Create Vertical base layout
     let base_layout = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -43,7 +64,7 @@ fn build_ui(application: &adw::Application, app_state: Arc<Mutex<AppState>>) {
     window.present();
 }
 
-fn build_header_bar(app_state: &Arc<Mutex<AppState>>) -> gtk::HeaderBar {
+fn build_header_bar(app_state: &Arc<Mutex<AppState>>, cpu_core_grid: &Grid) -> gtk::HeaderBar {
     let header_bar = gtk::HeaderBar::new();
     header_bar.set_title_widget(Some(&gtk::Label::new(Some("PBO-Assistant"))));
     header_bar.set_show_title_buttons(true);
@@ -56,8 +77,10 @@ fn build_header_bar(app_state: &Arc<Mutex<AppState>>) -> gtk::HeaderBar {
         .css_classes(vec!["suggested-action"])
         .build();
     let app_state_for_start = app_state.clone();
+    let cpu_core_grid = cpu_core_grid.clone();
     start_test_button.connect_clicked(move |_| {
-        start_test(&app_state_for_start);
+        ;
+        start_test(&app_state_for_start, &cpu_core_grid);
     });
     header_bar.pack_start(&start_test_button);
 
@@ -181,40 +204,58 @@ fn build_settings_row(label_text: &str, widget: gtk::Widget) -> gtk::Box {
     horizontal_layout
 }
 
-fn start_test(app_state: &Arc<Mutex<AppState>>) {
+fn start_test(app_state: &Arc<Mutex<AppState>>, cpu_core_grid: &Grid) {
     println!("Starting test");
 
-    let app_state_locked = app_state.lock().unwrap();
-    let core_to_test = app_state_locked.test_config.cores_to_test.clone();
-
-    let cores_to_test = cpu_test::get_cores_to_test(core_to_test, cpu_test::get_physical_cores());
-
-    // Adjust cores to test in app state
-    let mut app_state_mod = app_state.lock().unwrap();
-    app_state_mod.test_config.cores_to_test = cores_to_test.clone();
-    drop(app_state_mod);
+    fix_actual_cores_to_test(app_state);
 
     cpu_test::initialize_response(&app_state.clone());
 
     // Render loop for cpus
-    build_render_loop(app_state.clone());
+    build_render_loop(app_state.clone(), cpu_core_grid);
 
-    cpu_test::run(app_state.clone());
+    //cpu_test::run(app_state.clone());
 }
 
-fn build_render_loop(app_state: Arc<Mutex<AppState>>) {
+fn fix_actual_cores_to_test(app_state: &Arc<Mutex<AppState>>) {
+    let mut app_state_locked = app_state.lock().unwrap();
+
+    // Gets the actual cores to test, if the user entered more cores than available, the function will return the available cores
+    // Also alternates the cores
+    let cores_to_test = app_state_locked.test_config.cores_to_test.clone();
+    let cores_to_test = cpu_test::get_cores_to_test(cores_to_test, cpu_test::get_physical_cores());
+    app_state_locked.test_config.cores_to_test.clone_from(&cores_to_test);
+}
+
+fn build_render_loop(app_state: Arc<Mutex<AppState>>, cpu_core_grid: &Grid) {
     // First add for each cpu core a layout to the cpu grid view
-    let app_state_locked = app_state.lock().unwrap();
-    let cpu_core_grid = app_state_locked.ui_elements.get("cpu_core_grid").unwrap().clone().downcast::<gtk::Grid>().unwrap();
+    let cores_to_test = app_state.lock().unwrap().test_config.cores_to_test.clone();
 
     // iterate over cores to test and create a layout for each core
-    for core in app_state_locked.test_config.cores_to_test.iter() {
-        let core_layout = gtk::Box::new(gtk::Orientation::Vertical, 5);
-        let core_label = gtk::Label::new(Some(&format!("Core {}", core)));
-        core_layout.append(&core_label);
+    for core in cores_to_test.iter() {
+        let core_layout = build_core_layout(&core);
         cpu_core_grid.attach(&core_layout, *core as i32, 0, 1, 1);
     }
-    
+
     // Then start a dedicated thread that checks every second the app state
     // And adjust the cpu layout accordingly
+}
+
+fn build_core_layout(core: &&usize) -> gtk::Box {
+    let core_layout = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .margin_top(5)
+        .margin_bottom(5)
+        .margin_start(5)
+        .margin_end(5)
+        .height_request(100)
+        .width_request(100)
+        .css_classes(vec!["core-layout"])
+        .build();
+
+
+    let core_label = gtk::Label::new(Some(&format!("Core {}", core)));
+    core_layout.append(&core_label);
+
+    core_layout
 }

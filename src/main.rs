@@ -16,8 +16,10 @@ mod ycruncher;
 pub struct AppState {
     pub test_results: HashMap<usize, CpuTestResponse>,
     pub test_config: cpu_test::CpuTestConfig,
-    // FIXME: gtk widget ist nicht transportsicher, muss evtl geboxt werden
-    pub ui_elements: HashMap<String, gtk::Widget>,
+}
+
+enum UiMessage {
+    UpdateCores(Vec<usize>),
 }
 
 fn main() -> glib::ExitCode {
@@ -31,7 +33,6 @@ fn main() -> glib::ExitCode {
     let app_state = AppState {
         test_results: HashMap::new(),
         test_config: config,
-        ui_elements: HashMap::new(),
     };
     let app_state = Arc::new(Mutex::new(app_state));
 

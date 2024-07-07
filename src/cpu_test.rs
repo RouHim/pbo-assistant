@@ -129,7 +129,7 @@ fn pretty_print(duration: Duration) -> String {
     format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
 }
 
-/// Gets the acutal cores to test
+/// Gets the actual cores to test
 /// If cores_to_test is empty, all physical cores will be tested
 /// If cores_to_test is not empty, it will be filtered to only include physical cores
 /// Also filters non-existing cores

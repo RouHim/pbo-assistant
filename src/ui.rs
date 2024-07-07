@@ -1,8 +1,8 @@
 use std::sync::{Arc, Mutex};
 
 use adw::glib::Propagation;
-use gtk::glib::ExitCode;
 use gtk::{CssProvider, Grid};
+use gtk::glib::ExitCode;
 use gtk::prelude::{ApplicationExt, ApplicationExtManual, BoxExt, ButtonExt, EditableExt, EntryExt, GridExt, GtkWindowExt, PopoverExt, WidgetExt};
 use strum::IntoEnumIterator;
 
@@ -25,7 +25,7 @@ pub fn start_ui_application(app_state: Arc<Mutex<AppState>>) -> ExitCode {
 fn load_css() {
     // Load the CSS file and add it to the provider
     let provider = CssProvider::new();
-    provider.load_from_string(include_str!("../assets/ui_style.css"));
+    provider.load_from_string(include_str!("../styles/style.css"));
 
     // Add the provider to the default screen
     gtk::style_context_add_provider_for_display(

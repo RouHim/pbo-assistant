@@ -1,41 +1,48 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="stylesheet" href="styles.css" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri App</title>
+<head>
+    <title>PBO Assistant</title>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+    <link rel="stylesheet" href="styles.css"/>
     <script type="module" src="/main.js" defer></script>
-  </head>
 
-  <body>
-    <div class="container">
-      <h1>Welcome to Tauri!</h1>
+    <!-- Water css dark stylesheet -->
+    <link href="libs/water-css-dark/dark.css" rel="stylesheet">
 
-      <div class="row">
-        <a href="https://tauri.app" target="_blank">
-          <img src="/assets/tauri.svg" class="logo tauri" alt="Tauri logo" />
-        </a>
-        <a
-          href="https://developer.mozilla.org/en-US/docs/Web/JavaScript"
-          target="_blank"
-        >
-          <img
-            src="/assets/javascript.svg"
-            class="logo vanilla"
-            alt="JavaScript logo"
-          />
-        </a>
-      </div>
+    <!--Feather icons-->
+    <script src="libs/feather-icons/feather.min.js"></script>
+</head>
 
-      <p>Click on the Tauri logo to learn more about the framework</p>
-
-      <form class="row" id="greet-form">
-        <input id="greet-input" placeholder="Enter a name..." />
-        <button type="submit">Greet</button>
-      </form>
-
-      <p id="greet-msg"></p>
+<body>
+<div id="baseContainer">
+    <div id="configLayout">
+        <div>
+            <label for="durationPerCoreInput">Duration per core</label>
+            <input type="text" id="durationPerCoreInput" name="durationPerCoreInput" value="10m"/>
+        </div>
+        <div>
+            <label for="coresTotTestInput">Cores to test</label>
+            <input type="text" id="coresTotTestInput" name="coresTotTestInput" value=""/>
+        </div>
+        <div id="testMethodsLayout">
+        </div>
+        <button id="startButton">Start</button>
     </div>
-  </body>
+
+
+    <div id="cpusLayout">
+        <div id="cpu1" class="cpuLayout">CPU 1</div>
+        <div id="cpu2" class="cpuLayout">CPU 2</div>
+        <div id="cpu3" class="cpuLayout">CPU 3</div>
+        <div id="cpu4" class="cpuLayout">CPU 4</div>
+    </div>
+
+
+    <div id="summaryLayout">
+        test
+    </div>
+</div>
+</body>
 </html>

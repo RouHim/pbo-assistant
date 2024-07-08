@@ -9,13 +9,13 @@ use std::thread;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use strum_macros::{Display, EnumIter};
+use strum_macros::{Display, EnumIter, EnumString};
 use sysinfo::System;
 
 use crate::{AppState, mprime, process, ycruncher};
 
 #[derive(Debug, Clone)]
-pub struct CpuTestResponse {
+pub struct CpuTestStatus {
     pub core_id: usize,
     pub max_clock: u64,
     pub avg_clock: u64,
@@ -39,7 +39,7 @@ pub struct CpuTestConfig {
     pub test_methods: Vec<CpuTestMethod>,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, EnumIter, Display)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, EnumIter, Display, EnumString)]
 pub enum CpuTestMethod {
     Prime95,
     YCruncher,
@@ -53,10 +53,9 @@ pub enum CpuTestMethodStatus {
     Failed,
 }
 
-pub fn run(app_state: Arc<Mutex<AppState>>) {
+pub fn run(app_state: Arc<Mutex<AppState>>, config: CpuTestConfig) {
     mprime::initialize();
     ycruncher::initialize();
-    let config = app_state.lock().unwrap().test_config.clone();
     
     let duration = &config.duration_per_core;
 
@@ -87,7 +86,7 @@ pub fn initialize_response(
     let time_to_test_per_core = &config.duration_per_core;
 
     for core_id in &config.cores_to_test {
-        let mut test_result = CpuTestResponse {
+        let mut test_result = CpuTestStatus {
             core_id: *core_id,
             max_clock: u64::MIN,
             avg_clock: u64::MIN,

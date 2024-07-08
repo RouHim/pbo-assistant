@@ -9,7 +9,7 @@ pub const ERROR_MESSAGE: &str = "Errors encountered.";
 const PROCESS_PATH: &str = "/tmp/pbo-assistant/ycruncher/y-cruncher";
 
 pub fn initialize() {
-    let memory_file = include_bytes!("../assets/ycruncher/ycruncher.tar.gz");
+    let memory_file = include_bytes!("../../assets/ycruncher/ycruncher.tar.gz");
 
     std::fs::create_dir_all("/tmp/pbo-assistant/ycruncher").expect("Failed to create directory");
 

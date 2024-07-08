@@ -8,8 +8,8 @@ pub const ERROR_MESSAGE: &str = "TORTURE TEST FAILED";
 const PROCESS_PATH: &str = "/tmp/pbo-assistant/mprime/mprime";
 
 pub fn initialize() {
-    let mprime = include_bytes!("../assets/mprime/mprime");
-    let prime_txt = include_bytes!("../assets/mprime/prime.txt");
+    let mprime = include_bytes!("../../assets/mprime/mprime");
+    let prime_txt = include_bytes!("../../assets/mprime/prime.txt");
 
     std::fs::create_dir_all("/tmp/pbo-assistant/mprime").expect("Failed to create directory");
 

@@ -1,8 +1,9 @@
+use crate::cpu_info;
 use std::process::Command;
 
 /// Set the affinity of a thread to a specific core by using the `taskset` command
 pub fn set_thread_affinity(pid: u32, physical_core_id: usize) {
-    let logical_core_id = physical_core_id * 2;
+    let logical_core_id = cpu_info::get_first_logical_core_id_for(physical_core_id);
     println!(
         "Setting thread affinity for pid {} to logical core {}",
         pid, logical_core_id

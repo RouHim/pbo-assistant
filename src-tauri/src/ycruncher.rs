@@ -1,3 +1,4 @@
+use crate::{cpu_info, process};
 use flate2::read::GzDecoder;
 use std::io::{Cursor, Write};
 use std::process::{Child, Command};
@@ -9,6 +10,9 @@ pub const ERROR_MESSAGE: &str = "Errors encountered.";
 const PROCESS_PATH: &str = "/tmp/pbo-assistant/ycruncher/y-cruncher";
 
 pub fn initialize() {
+    // Kill all processes
+    process::kill();
+
     let memory_file = include_bytes!("../../assets/ycruncher/ycruncher.tar.gz");
 
     std::fs::create_dir_all("/tmp/pbo-assistant/ycruncher").expect("Failed to create directory");
@@ -27,8 +31,8 @@ pub fn initialize() {
         .expect("Failed to change permissions");
 }
 
-fn spawn_process(core_id: usize) -> Child {
-    let logical_core_id = core_id * 2;
+fn spawn_process(physical_core_id: usize) -> Child {
+    let logical_core_id = cpu_info::get_first_logical_core_id_for(physical_core_id);
 
     let mut child_process = Command::new(PROCESS_PATH)
         .stdin(std::process::Stdio::piped())
@@ -45,7 +49,7 @@ fn spawn_process(core_id: usize) -> Child {
     // d   Disable all Cores
     // #   Number of logical core id
     // \n  confirm core dialog
-    // 2   Modify memory settins
+    // 2   Modify memory settings
     // \n  confirm core dialog
     // 5   Run Forever (we are managing the time)
     // 0   Start Stress test

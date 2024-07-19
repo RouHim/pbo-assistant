@@ -39,11 +39,6 @@ body {
 }
 
 #summaryLayout {
-    height: 25px;
-    display: flex;
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
     border-top: 1px solid var(--border);
     padding: 10px 0 0;
     max-width: 800px;

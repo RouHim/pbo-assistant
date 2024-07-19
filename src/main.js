@@ -14,10 +14,17 @@ window.addEventListener("DOMContentLoaded", () => {
     startButton.addEventListener("click", () => onStartTestButtonClick());
 });
 
+function clearSummaryLayout(innerHTML = "") {
+    const summaryLayout = document.getElementById("summaryLayout");
+    summaryLayout.innerHTML = innerHTML;
+}
+
 function onStartTestButtonClick() {
     if (isTestRunning) {
-        stopTest();
+        clearSummaryLayout("Test stopped by user");
+        onStopPressed();
     } else {
+        clearSummaryLayout();
         startTest();
     }
 }
@@ -42,19 +49,24 @@ function startTest() {
         testMethods: testMethods,
         durationPerCore: durationPerCore,
         coresToTest: coresToTest
-    }).then((result) => {
+    }).then((_) => {
         isTestRunning = true;
         startButton.innerText = "Stop";
         startStatusPolling();
     });
 }
 
-function stopTest() {
+function onStopPressed() {
     invoke("stop_test").then(() => {
-        clearInterval(timer);
-        isTestRunning = false;
-        startButton.innerText = "Start";
+        stopTest();
     });
+}
+
+function stopTest() {
+    clearInterval(timer);
+    isTestRunning = false;
+    startButton.innerText = "Start";
+    updateTestStatus();
 }
 
 function updateCpuStatus(cpuTestStatus) {
@@ -68,7 +80,6 @@ function updateCpuStatus(cpuTestStatus) {
         // The CPU layout already exists, just update the according values
         updateCpuStatusLayout(cpuTestStatus, cpuLayout);
     }
-
 }
 
 function createCpuStatusLayout(cpuTestStatus, cpuLayout) {
@@ -177,17 +188,54 @@ function startStatusPolling() {
     timer = setInterval(() => updateTestStatus(), 1000);
 }
 
+function isWholeTestDone(testStatus) {
+    // Collect all test method results
+    let allMethods = testStatus.flatMap(cpuTestStatus => Object.values(cpuTestStatus.method_response));
+
+    // Check if all states are either success or failed
+    return allMethods.every(method => method.state === "Success" || method.state === "Failed");
+}
+
 function updateTestStatus() {
-    console.log("Updating test status...");
     invoke("get_test_status").then((results) => {
-        console.log("Got test status");
         const testStatus = JSON.parse(results);
+
         testStatus.forEach((cpuTestStatus) => {
             updateCpuStatus(cpuTestStatus);
         });
+
+        if (isWholeTestDone(testStatus)) {
+            stopTest();
+            showSummary(testStatus)
+        }
     }).catch((error) => {
         console.error("Error while getting test status: " + error);
     });
+}
+
+// Shows a summary of the test results
+// If all cores passed the test, it will show a success message
+// If any core failed the test, it will show a list of the failed cores
+function showSummary(testStatus) {
+    const summaryLayout = document.getElementById("summaryLayout");
+    summaryLayout.innerHTML = "";
+
+    const failedCores = testStatus.filter((cpuTestStatus) => {
+        const methods = cpuTestStatus.method_response;
+        return Object.values(methods).some((method) => method.state === "Failed");
+    });
+
+    if (failedCores.length > 0) {
+        const div = document.createElement("div");
+        div.innerText = "Failed cores: " + failedCores
+            .map((cpuTestStatus) => cpuTestStatus.core_id)
+            .join(", ");
+        summaryLayout.appendChild(div);
+    } else {
+        const div = document.createElement("div");
+        div.innerText = "All cores passed the test";
+        summaryLayout.appendChild(div);
+    }
 }
 
 function loadTestMethods() {

@@ -11,6 +11,10 @@
     -webkit-text-size-adjust: 100%;
 }
 
+body {
+    max-width: 100% !important;
+}
+
 #baseContainer {
     display: flex;
     flex-direction: column;
@@ -27,28 +31,11 @@
     align-items: center;
     border-bottom: 1px solid var(--border);
     padding: 0 0 10px;
-}
-
-#cpusLayout {
-    flex-grow: 1;
-    overflow: auto;
-    margin: 10px 0;
-
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
-    gap: 10px;
-}
-
-.cpuLayout {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px;
-    background-color: var(--background);
-    border: 1px solid var(--border);
-    border-radius: 5px;
+    max-width: 800px;
+    width: 800px;
+    /*center horizontally*/
+    margin-left: auto;
+    margin-right: auto;
 }
 
 #summaryLayout {
@@ -59,6 +46,11 @@
     align-items: center;
     border-top: 1px solid var(--border);
     padding: 10px 0 0;
+    max-width: 800px;
+    width: 800px;
+    /*center horizontally*/
+    margin-left: auto;
+    margin-right: auto;
 }
 
 #startButton {
@@ -71,4 +63,46 @@
     font-size: 16px;
     border-radius: 5px;
     margin-left: 20px;
+}
+
+#cpusLayout {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 250px);
+    grid-template-rows: repeat(auto-fill, 250px);
+    gap: 10px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    /*center horizontally all the cpu layouts horizontally*/
+    justify-content: center;
+
+}
+
+.cpuLayout {
+    width: 250px;
+    height: 250px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    background-color: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    box-sizing: border-box; /* Stellt sicher, dass padding und border in der Größe enthalten sind */
+}
+
+.cpu-idle {
+    background-color: var(--background);
+}
+
+.cpu-testing {
+    background-color: var(--selection);
+}
+
+.cpu-success {
+    background-color: #00a000;
+}
+
+.cpu-failed {
+    background-color: #ff0000;
 }

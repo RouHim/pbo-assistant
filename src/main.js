@@ -1,4 +1,5 @@
 const {invoke} = window.__TAURI__.core;
+const {message} = window.__TAURI__.dialog;
 
 const durationPerCoreInput = document.getElementById("durationPerCoreInput");
 const coresToTestInput = document.getElementById("coresToTestInput");
@@ -53,6 +54,8 @@ function startTest() {
         isTestRunning = true;
         startButton.innerText = "Stop";
         startStatusPolling();
+    }).catch(async (errorMsg) => {
+        await message(errorMsg, {title: 'Error', kind: 'error'});
     });
 }
 

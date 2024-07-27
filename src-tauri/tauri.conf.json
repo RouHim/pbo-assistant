@@ -9,9 +9,9 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "pbo-assistant",
-        "width": 800,
-        "height": 600
+        "title": "PBO-Assistant",
+        "width": 1024,
+        "height": 768
       }
     ],
     "security": {

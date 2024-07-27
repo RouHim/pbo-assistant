@@ -88,7 +88,7 @@ pub fn run(app_state: AppState, config: &CpuTestConfig) {
 pub fn initialize_response(
     core_status: &Arc<RwLock<HashMap<usize, CpuTestStatus>>>,
     config: &CpuTestConfig,
-) {
+) -> Result<(), String> {
     let time_to_test_per_core = &config.duration_per_core;
 
     // Remove all entries
@@ -106,10 +106,10 @@ pub fn initialize_response(
 
         for cpu_test_method in &config.test_methods {
             let total_secs_per_method = parse_duration::parse(time_to_test_per_core)
-                .unwrap()
+                .map_err(|e| format!("Error parsing duration: {}. Examples: 1h, 30m, 10s", e))?
                 .as_secs()
                 / config.test_methods.len() as u64;
-            
+
             let method_response = TestMethodResponse {
                 method: *cpu_test_method,
                 state: CpuTestMethodStatus::Idle,
@@ -125,6 +125,8 @@ pub fn initialize_response(
         // Initialize the test results with empty values
         core_status.write().unwrap().insert(core_id, test_result);
     }
+
+    Ok(())
 }
 
 /// Pretty prints the duration in a human-readable format
@@ -142,18 +144,21 @@ fn pretty_print(duration: Duration) -> String {
 /// If cores_to_test is not empty, it will be filtered to only include physical cores
 /// Also filters non-existing cores
 /// Also removes duplicates and alternates the cores to test
-pub fn get_cores_to_test(cores_to_test: String, physical_core_count: usize) -> Vec<usize> {
+pub fn get_cores_to_test(
+    cores_to_test: &str,
+    physical_core_count: usize,
+) -> Result<Vec<usize>, String> {
     println!("Physical core count: {}", cpu_info::get_physical_cores());
     println!("Logical core count: {}", cpu_info::get_logical_cores());
 
-    // Parse cores to test string into a vector of usize
     let mut cores_to_test: Vec<usize> = if cores_to_test.is_empty() {
         (0..physical_core_count).collect()
     } else {
         cores_to_test
             .split(',')
-            .map(|core| core.trim().parse::<usize>().unwrap())
-            .collect()
+            .map(|core| core.trim().parse::<usize>())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Error parsing cores to test: {}: {}", e, cores_to_test))?
     };
 
     // Remove duplicates
@@ -163,19 +168,18 @@ pub fn get_cores_to_test(cores_to_test: String, physical_core_count: usize) -> V
     cores_to_test.retain(|&core| core < physical_core_count);
 
     // Alternate the cores to test
-    // This is done to avoid testing cores that are next to each other
     cores_to_test = alternate_cores(cores_to_test);
 
-    cores_to_test
+    Ok(cores_to_test)
 }
 
 // test for get_cores_to_test
 #[test]
 fn test_get_cores_to_test() {
-    let cores_to_test = "0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 4, 3".to_string();
+    let cores_to_test = "0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 4, 3";
     let physical_core_count = 8;
     let cores_to_test = get_cores_to_test(cores_to_test, physical_core_count);
-    assert_eq!(cores_to_test, vec![0, 7, 1, 6, 2, 5, 3, 4]);
+    assert_eq!(cores_to_test.unwrap(), vec![0, 7, 1, 6, 2, 5, 3, 4]);
 }
 
 fn test_cores(

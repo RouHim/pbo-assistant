@@ -6,6 +6,7 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 use std::thread;
+
 use strum::IntoEnumIterator;
 
 use cpu_test::AppState;
@@ -25,6 +26,7 @@ fn main() {
             terminated_by_user: Arc::new(RwLock::new(false)),
         })
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_test_methods,
             start_test,
@@ -75,19 +77,29 @@ async fn start_test(
     duration_per_core: String,
     cores_to_test: String,
     app_state: tauri::State<'_, AppState>,
-) -> Result<(), ()> {
+) -> Result<(), String> {
     let test_methods = test_methods
         .iter()
         .map(|method| cpu_test::CpuTestMethod::from_str(method).unwrap())
         .collect::<Vec<cpu_test::CpuTestMethod>>();
 
     // Cleanup and validate cores to test
-    let cores_to_test = cpu_test::get_cores_to_test(cores_to_test, cpu_info::get_physical_cores());
+    let cores_to_test_parsed =
+        cpu_test::get_cores_to_test(&cores_to_test, cpu_info::get_physical_cores())?;
+
+    // If cores to test is empty, return error
+    if cores_to_test_parsed.is_empty() {
+        return Err(format!(
+            "No cores selected with selection criteria: {}",
+            cores_to_test
+        )
+        .to_string());
+    }
 
     let config = cpu_test::CpuTestConfig {
         test_methods,
         duration_per_core: duration_per_core.parse().unwrap(),
-        cores_to_test,
+        cores_to_test: cores_to_test_parsed,
     };
 
     let app_state = app_state.deref();
@@ -95,7 +107,7 @@ async fn start_test(
     // Reset terminated by user flag
     *app_state.terminated_by_user.write().unwrap() = false;
 
-    cpu_test::initialize_response(&app_state.test_status, &config);
+    cpu_test::initialize_response(&app_state.test_status, &config)?;
 
     let core_status = app_state.clone();
     thread::spawn(move || {

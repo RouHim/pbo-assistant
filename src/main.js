@@ -5,15 +5,26 @@ const durationPerCoreInput = document.getElementById("durationPerCoreInput");
 const coresToTestInput = document.getElementById("coresToTestInput");
 const testMethodsLayout = document.getElementById("testMethodsLayout");
 const startButton = document.getElementById("startButton");
+const labelCoresToTest = document.getElementById("labelCoresToTest");
 
 let timer;
 let isTestRunning = false;
 
 window.addEventListener("DOMContentLoaded", () => {
     loadTestMethods();
+    loadCores();
 
     startButton.addEventListener("click", () => onStartTestButtonClick());
 });
+
+// Loads physical cores of the CPU
+// Show them in the label: labelCoresToTest
+function loadCores() {
+    invoke("get_physical_cores").then((cores) => {
+        const coresCount = JSON.parse(cores) - 1;
+        labelCoresToTest.innerText = `Physical cores to test (0 - ${coresCount})`;
+    });
+}
 
 function clearSummaryLayout(innerHTML = "") {
     const summaryLayout = document.getElementById("summaryLayout");
@@ -73,7 +84,7 @@ function stopTest() {
 }
 
 function updateCpuStatus(cpuTestStatus) {
-    // Find div layout
+    // Find div layout for the current core
     let cpuLayout = document.getElementById(`cpu${cpuTestStatus.core_id}`);
 
     // If it doesn't exist, create it

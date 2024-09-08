@@ -96,6 +96,22 @@ function updateCpuStatus(cpuTestStatus) {
     }
 }
 
+// onOffsetMinusButtonPressed
+// Decreases the offset of the core by 1
+function onOffsetMinusButtonPressed(coreId) {
+    const offsetInput = document.getElementById(`offset${coreId}`);
+    offsetInput.value = parseInt(offsetInput.value) - 1;
+    invoke("set_offset", {core_id: coreId, offset: parseInt(offsetInput.value)});
+}
+
+// onOffsetPlusButtonPressed
+// Increases the offset of the core by 1
+function onOffsetPlusButtonPressed(coreId) {
+    const offsetInput = document.getElementById(`offset${coreId}`);
+    offsetInput.value = parseInt(offsetInput.value) + 1;
+    invoke("set_offset", {core_id: coreId, offset: parseInt(offsetInput.value)});
+}
+
 function createCpuStatusLayout(cpuTestStatus, cpuLayout) {
     const cpusLayout = document.getElementById("cpusLayout");
     const div = document.createElement("div");
@@ -107,36 +123,62 @@ function createCpuStatusLayout(cpuTestStatus, cpuLayout) {
     // Core id
     cpuLayout.appendChild(document.createTextNode(`# ${cpuTestStatus.core_id}`));
 
-    // Create and set current test method status
-    const methodsDiv = document.createElement("div");
-    methodsDiv.id = `${cpuTestStatus.core_id}MethodLayout`;
-    const methods = cpuTestStatus.method_response;
-    for (const method in methods) {
-        const methodDiv = document.createElement("div");
-        const methodStatus = methods[method];
-        methodDiv.id = `${cpuTestStatus.core_id}${method}Status`;
-        methodDiv.innerText = `${method}: ${methodStatus.state}`;
-        methodsDiv.appendChild(methodDiv);
-    }
-    cpuLayout.appendChild(methodsDiv);
+    // "Offset" static text
+    cpuLayout.appendChild(document.createElement("br"));
+    cpuLayout.appendChild(document.createTextNode("Offset"));
+    cpuLayout.appendChild(document.createElement("br"));
 
-    // Create and set clock speed
-    const clockDiv = document.createElement("div");
-    clockDiv.id = `${cpuTestStatus.core_id}Clock`;
-    clockDiv.innerText = `Max. Clock: ${cpuTestStatus.max_clock} MHz`;
-    cpuLayout.appendChild(clockDiv);
+    // Create a container div for the buttons
+    const buttonContainer = document.createElement("div");
+    buttonContainer.className = "buttonContainer";
+    cpuLayout.appendChild(buttonContainer);
 
-    // Create and set progress
-    const progressDiv = document.createElement("div");
-    progressDiv.id = `${cpuTestStatus.core_id}Progress`;
-    progressDiv.style.display = "none";
-    cpuLayout.appendChild(progressDiv);
+    // "-" Button, that reduces the offset by 1
+    const offsetMinusButton = document.createElement("button");
+    offsetMinusButton.innerText = "-";
+    offsetMinusButton.onclick = () => onOffsetMinusButtonPressed(cpuTestStatus.core_id);
+    buttonContainer.appendChild(offsetMinusButton);
 
-    // Create and set progress bar
+    const offsetInput = document.createElement("input");
+    offsetInput.type = "number";
+    offsetInput.id = `offset${cpuTestStatus.core_id}`;
+    offsetInput.value = 0;
+    offsetInput.min = -100;
+    offsetInput.max = 100;
+    buttonContainer.appendChild(offsetInput);
+
+    // "+" Button, that increases the offset by 1
+    const offsetPlusButton = document.createElement("button");
+    offsetPlusButton.innerText = "+";
+    offsetPlusButton.onclick = () => onOffsetPlusButtonPressed(cpuTestStatus.core_id);
+    buttonContainer.appendChild(offsetPlusButton);
+
+    // The clock speed as text eg "3600 MHz"
+    cpuLayout.appendChild(document.createElement("br"));
+    const maxClockTextNode = document.createElement("span");
+    maxClockTextNode.id = `${cpuTestStatus.core_id}Clock`;
+    maxClockTextNode.innerText = `${cpuTestStatus.max_clock} MHz`;
+    cpuLayout.appendChild(maxClockTextNode);
+
+    // The Progress bar showing the time left for the current test method
+    // Hidden at the beginning
+    cpuLayout.appendChild(document.createElement("br"));
     const progressBar = document.createElement("progress");
     progressBar.id = `${cpuTestStatus.core_id}ProgressBar`;
+    progressBar.max = 100;
+    progressBar.value = 0;
     progressBar.style.display = "none";
     cpuLayout.appendChild(progressBar);
+
+    // The test methods in one line as dedicated spans
+    cpuLayout.appendChild(document.createElement("br"));
+    const methods = cpuTestStatus.method_response;
+    for (const method in methods) {
+        const methodStatusTextNode = document.createElement("span");
+        methodStatusTextNode.id = `${cpuTestStatus.core_id}${method}`;
+        cpuLayout.appendChild(methodStatusTextNode);
+        cpuLayout.appendChild(document.createTextNode(" "));
+    }
 }
 
 function updateCpuStatusLayout(cpuTestStatus, cpuLayout) {
@@ -149,34 +191,39 @@ function updateCpuStatusLayout(cpuTestStatus, cpuLayout) {
     let isAnyMethodFailed = Object.values(methods).some((method) => method.state === "Failed");
     let isAnyIdleAndAnySuccess = Object.values(methods).some((method) => method.state === "Idle") && Object.values(methods).some((method) => method.state === "Success");
 
-    // Update current status
-    for (const method in methods) {
-        let methodStatusTextNode = document.getElementById(`${cpuTestStatus.core_id}${method}Status`);
-        const methodStatus = methods[method];
-        methodStatusTextNode.innerText = `${method}: ${methodStatus.state}`;
-    }
-
     // Update clock speed
-    const maxClockTextNode = document.getElementById(`${cpuTestStatus.core_id}Clock`);
-    maxClockTextNode.innerText = `Max. Clock: ${cpuTestStatus.max_clock} MHz`;
-
-    // Update the progress
-    let currentMethodInTesting = Object.values(methods).find((method) => method.state === "Testing");
-
-    // Update progress text
-    const progressTextNode = document.getElementById(`${cpuTestStatus.core_id}Progress`);
-    progressTextNode.style.display = isAnyMethodTesting ? "block" : "none";
-    if (isAnyMethodTesting) {
-        progressTextNode.innerText = `Progress: ${currentMethodInTesting.current_secs}/${currentMethodInTesting.total_secs}`;
-    }
+    let maxClockTextNode = document.getElementById(`${cpuTestStatus.core_id}Clock`);
+    maxClockTextNode.innerText = `${cpuTestStatus.max_clock} MHz`;
 
     // Update progress bar
     const progressBar = document.getElementById(`${cpuTestStatus.core_id}ProgressBar`);
     progressBar.style.display = isAnyMethodTesting ? "block" : "none";
     if (isAnyMethodTesting) {
+        const currentMethodInTesting = Object.values(methods).find((method) => method.state === "Testing");
         progressBar.max = currentMethodInTesting.total_secs;
         progressBar.value = currentMethodInTesting.current_secs;
     }
+
+    // Update Test method status
+    for (const method in methods) {
+        const methodStatusTextNode = document.getElementById(`${cpuTestStatus.core_id}${method}`);
+        methodStatusTextNode.innerText = `${method}`;
+        switch (methods[method].state) {
+            case "Idle":
+                methodStatusTextNode.style.color = "black";
+                break;
+            case "Testing":
+                methodStatusTextNode.style.color = "blue";
+                break;
+            case "Success":
+                methodStatusTextNode.style.color = "green";
+                break;
+            case "Failed":
+                methodStatusTextNode.style.color = "red";
+                break;
+        }
+    }
+
 
     // Update verification status
     // Set style classes of cpu div accordingly the current state ( Idle,  Testing, Success, Failed,):
@@ -220,11 +267,12 @@ function updateTestStatus() {
 
         if (isWholeTestDone(testStatus)) {
             stopTest();
-            showSummary(testStatus)
+            showSummary(testStatus);
         }
-    }).catch((error) => {
-        console.error("Error while getting test status: " + error);
     });
+        // .catch((error) => {
+        // console.error("Error while getting test status: " + error);
+    // });
 }
 
 // Shows a summary of the test results

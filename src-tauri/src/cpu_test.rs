@@ -9,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumIter, EnumString};
 
 use crate::{cpu_info, mprime, process, ycruncher};
@@ -18,6 +18,7 @@ use crate::{cpu_info, mprime, process, ycruncher};
 pub struct AppState {
     pub test_status: Arc<RwLock<HashMap<usize, CpuTestStatus>>>,
     pub terminated_by_user: Arc<RwLock<bool>>,
+    pub config_write_lock: Arc<RwLock<bool>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -45,7 +46,9 @@ pub struct CpuTestConfig {
     pub test_methods: Vec<CpuTestMethod>,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, EnumIter, Display, EnumString, Serialize)]
+#[derive(
+    Debug, Clone, Copy, Eq, PartialEq, Hash, EnumIter, Display, EnumString, Serialize, Deserialize,
+)]
 pub enum CpuTestMethod {
     Prime95,
     YCruncher,

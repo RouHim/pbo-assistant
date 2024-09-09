@@ -9,20 +9,32 @@ const labelCoresToTest = document.getElementById("labelCoresToTest");
 
 let timer;
 let isTestRunning = false;
+let physicalCoresCount = 0;
+let appConfig = {};
 
 window.addEventListener("DOMContentLoaded", () => {
-    loadTestMethods();
-    loadCores();
+    loadConfig().then(() => {
+        loadTestMethods();
+        loadCores();
+    });
 
     startButton.addEventListener("click", () => onStartTestButtonClick());
 });
+
+function loadConfig() {
+    return invoke("get_config").then((config) => {
+        appConfig = JSON.parse(config);
+        durationPerCoreInput.value = appConfig.test_duration_per_core;
+        coresToTestInput.value = appConfig.cores_to_test;
+    });
+}
 
 // Loads physical cores of the CPU
 // Show them in the label: labelCoresToTest
 function loadCores() {
     invoke("get_physical_cores").then((cores) => {
-        const coresCount = JSON.parse(cores) - 1;
-        labelCoresToTest.innerText = `Physical cores to test (0 - ${coresCount})`;
+        physicalCoresCount = JSON.parse(cores) - 1;
+        labelCoresToTest.innerText = `Physical cores to test (0 - ${physicalCoresCount})`;
     });
 }
 
@@ -56,11 +68,17 @@ function startTest() {
     const cpusLayout = document.getElementById("cpusLayout");
     cpusLayout.innerHTML = "";
 
+    // Build app config
+    appConfig.test_duration_per_core = durationPerCore;
+    appConfig.cores_to_test = coresToTest;
+    appConfig.active_test_methods = testMethods;
+
     // Start the actual test
     invoke("start_test", {
         testMethods: testMethods,
         durationPerCore: durationPerCore,
-        coresToTest: coresToTest
+        coresToTest: coresToTest,
+        appConfig: JSON.stringify(appConfig),
     }).then((_) => {
         isTestRunning = true;
         startButton.innerText = "Stop";
@@ -96,20 +114,18 @@ function updateCpuStatus(cpuTestStatus) {
     }
 }
 
-// onOffsetMinusButtonPressed
-// Decreases the offset of the core by 1
-function onOffsetMinusButtonPressed(coreId) {
+// updateOffset
+// Updates the offset of the core by the given delta
+function updateOffset(coreId, delta) {
     const offsetInput = document.getElementById(`offset${coreId}`);
-    offsetInput.value = parseInt(offsetInput.value) - 1;
-    invoke("set_offset", {core_id: coreId, offset: parseInt(offsetInput.value)});
-}
+    let nextValue = parseInt(offsetInput.value) + delta;
 
-// onOffsetPlusButtonPressed
-// Increases the offset of the core by 1
-function onOffsetPlusButtonPressed(coreId) {
-    const offsetInput = document.getElementById(`offset${coreId}`);
-    offsetInput.value = parseInt(offsetInput.value) + 1;
-    invoke("set_offset", {core_id: coreId, offset: parseInt(offsetInput.value)});
+    // Limit to -30 to 30
+    nextValue = Math.min(30, Math.max(-30, nextValue));
+
+    invoke("set_offset", {coreId: coreId, offset: nextValue});
+    offsetInput.value = nextValue;
+    appConfig.offset_per_core[coreId] = nextValue;
 }
 
 function createCpuStatusLayout(cpuTestStatus, cpuLayout) {
@@ -120,8 +136,11 @@ function createCpuStatusLayout(cpuTestStatus, cpuLayout) {
     cpusLayout.appendChild(div);
     cpuLayout = div;
 
-    // Core id
-    cpuLayout.appendChild(document.createTextNode(`# ${cpuTestStatus.core_id}`));
+    // Core id as span
+    let coreId = document.createElement("span");
+    coreId.innerText = `Core ${cpuTestStatus.core_id}`;
+    coreId.className = "coreId";
+    cpuLayout.appendChild(coreId);
 
     // "Offset" static text
     cpuLayout.appendChild(document.createElement("br"));
@@ -136,21 +155,28 @@ function createCpuStatusLayout(cpuTestStatus, cpuLayout) {
     // "-" Button, that reduces the offset by 1
     const offsetMinusButton = document.createElement("button");
     offsetMinusButton.innerText = "-";
-    offsetMinusButton.onclick = () => onOffsetMinusButtonPressed(cpuTestStatus.core_id);
+    offsetMinusButton.onclick = () => updateOffset(cpuTestStatus.core_id, -1);
     buttonContainer.appendChild(offsetMinusButton);
 
     const offsetInput = document.createElement("input");
     offsetInput.type = "number";
     offsetInput.id = `offset${cpuTestStatus.core_id}`;
     offsetInput.value = 0;
-    offsetInput.min = -100;
-    offsetInput.max = 100;
+    offsetInput.min = -30;
+    offsetInput.max = 30;
     buttonContainer.appendChild(offsetInput);
+
+    // Load the offset value from the app config from property "offset_per_core"
+    // and set the value to the input field
+    const offset = appConfig.offset_per_core[cpuTestStatus.core_id];
+    if (offset) {
+        offsetInput.value = offset;
+    }
 
     // "+" Button, that increases the offset by 1
     const offsetPlusButton = document.createElement("button");
     offsetPlusButton.innerText = "+";
-    offsetPlusButton.onclick = () => onOffsetPlusButtonPressed(cpuTestStatus.core_id);
+    offsetPlusButton.onclick = () => updateOffset(cpuTestStatus.core_id, 1);
     buttonContainer.appendChild(offsetPlusButton);
 
     // The clock speed as text eg "3600 MHz"
@@ -158,27 +184,31 @@ function createCpuStatusLayout(cpuTestStatus, cpuLayout) {
     const maxClockTextNode = document.createElement("span");
     maxClockTextNode.id = `${cpuTestStatus.core_id}Clock`;
     maxClockTextNode.innerText = `${cpuTestStatus.max_clock} MHz`;
+    maxClockTextNode.title = "Max Clock of the CPU";
     cpuLayout.appendChild(maxClockTextNode);
+
+    // The test methods in one line as dedicated spans
+    const methods = cpuTestStatus.method_response;
+    // Create div that contains the method status
+    const methodStatusLayout = document.createElement("div");
+    methodStatusLayout.className = "methodStatusLayout";
+    for (const method in methods) {
+        const methodStatusTextNode = document.createElement("span");
+        methodStatusTextNode.id = `${cpuTestStatus.core_id}${method}`;
+        methodStatusTextNode.className = "methodStatus";
+        methodStatusLayout.appendChild(methodStatusTextNode);
+    }
+    cpuLayout.appendChild(methodStatusLayout);
 
     // The Progress bar showing the time left for the current test method
     // Hidden at the beginning
-    cpuLayout.appendChild(document.createElement("br"));
     const progressBar = document.createElement("progress");
     progressBar.id = `${cpuTestStatus.core_id}ProgressBar`;
+    progressBar.className = "progressBar";
     progressBar.max = 100;
     progressBar.value = 0;
     progressBar.style.display = "none";
     cpuLayout.appendChild(progressBar);
-
-    // The test methods in one line as dedicated spans
-    cpuLayout.appendChild(document.createElement("br"));
-    const methods = cpuTestStatus.method_response;
-    for (const method in methods) {
-        const methodStatusTextNode = document.createElement("span");
-        methodStatusTextNode.id = `${cpuTestStatus.core_id}${method}`;
-        cpuLayout.appendChild(methodStatusTextNode);
-        cpuLayout.appendChild(document.createTextNode(" "));
-    }
 }
 
 function updateCpuStatusLayout(cpuTestStatus, cpuLayout) {
@@ -193,7 +223,7 @@ function updateCpuStatusLayout(cpuTestStatus, cpuLayout) {
 
     // Update clock speed
     let maxClockTextNode = document.getElementById(`${cpuTestStatus.core_id}Clock`);
-    maxClockTextNode.innerText = `${cpuTestStatus.max_clock} MHz`;
+    setValueAnimated(maxClockTextNode, cpuTestStatus.max_clock, " MHz");
 
     // Update progress bar
     const progressBar = document.getElementById(`${cpuTestStatus.core_id}ProgressBar`);
@@ -210,16 +240,16 @@ function updateCpuStatusLayout(cpuTestStatus, cpuLayout) {
         methodStatusTextNode.innerText = `${method}`;
         switch (methods[method].state) {
             case "Idle":
-                methodStatusTextNode.style.color = "black";
+                methodStatusTextNode.style.borderColor = "transparent";
                 break;
             case "Testing":
-                methodStatusTextNode.style.color = "blue";
+                methodStatusTextNode.style.borderColor = "var(--selection)";
                 break;
             case "Success":
-                methodStatusTextNode.style.color = "green";
+                methodStatusTextNode.style.borderColor = "#00a000";
                 break;
             case "Failed":
-                methodStatusTextNode.style.color = "red";
+                methodStatusTextNode.style.borderColor = "#ff0000";
                 break;
         }
     }
@@ -243,6 +273,28 @@ function updateCpuStatusLayout(cpuTestStatus, cpuLayout) {
         className += " cpu-failed";
     }
     cpuLayout.className = className;
+}
+
+function setValueAnimated(textInput, nextValue, suffix) {
+    let currentValue = parseInt(textInput.innerText);
+
+    // If currentValue == nextValue, do nothing
+    if (currentValue === nextValue) {
+        return;
+    }
+
+    const diff = nextValue - currentValue;
+    const step = diff / 10;
+    let counter = 0;
+    const interval = setInterval(() => {
+        currentValue += step;
+        textInput.innerText = Math.round(currentValue) + suffix;
+        counter++;
+        if (counter >= 10) {
+            clearInterval(interval);
+            textInput.innerText = nextValue + suffix;
+        }
+    }, 50);
 }
 
 function startStatusPolling() {
@@ -270,8 +322,8 @@ function updateTestStatus() {
             showSummary(testStatus);
         }
     });
-        // .catch((error) => {
-        // console.error("Error while getting test status: " + error);
+    // .catch((error) => {
+    // console.error("Error while getting test status: " + error);
     // });
 }
 
@@ -327,6 +379,10 @@ function createTestMethodCheckbox(testMethodName) {
     const label = document.createElement("label");
     label.htmlFor = testMethodName + "Checkbox";
     label.appendChild(document.createTextNode(testMethodName));
+
+    // Check if the test method is present in the app config "active_test_methods",
+    let isActive = appConfig.active_test_methods.includes(testMethodName);
+    checkbox.checked = isActive;
 
     div.appendChild(label);
     return div;

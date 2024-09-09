@@ -2425,8 +2425,10 @@ name = "pbo-assistant"
 version = "0.0.0"
 dependencies = [
  "chrono",
+ "dirs",
  "flate2",
  "itertools",
+ "lazy_static",
  "parse_duration",
  "serde",
  "serde_json",

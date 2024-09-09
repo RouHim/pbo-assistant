@@ -7,12 +7,12 @@ use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 use std::thread;
 
-use strum::IntoEnumIterator;
-
 use cpu_test::AppState;
+use strum::IntoEnumIterator;
 
 use crate::cpu_test::CpuTestStatus;
 
+mod config;
 mod cpu_info;
 mod cpu_test;
 mod mprime;
@@ -24,18 +24,27 @@ fn main() {
         .manage(AppState {
             test_status: Arc::new(RwLock::new(HashMap::new())),
             terminated_by_user: Arc::new(RwLock::new(false)),
+            config_write_lock: Arc::new(RwLock::new(false)),
         })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            get_config,
             get_test_methods,
             start_test,
             stop_test,
             get_test_status,
             get_physical_cores,
+            set_offset,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+async fn get_config(app_state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let config = config::load_config(&app_state.config_write_lock);
+    Ok(serde_json::to_string(&config).unwrap())
 }
 
 #[tauri::command]
@@ -76,12 +85,12 @@ async fn start_test(
     test_methods: Vec<String>,
     duration_per_core: String,
     cores_to_test: String,
+    app_config: String,
     app_state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    let test_methods = test_methods
-        .iter()
-        .map(|method| cpu_test::CpuTestMethod::from_str(method).unwrap())
-        .collect::<Vec<cpu_test::CpuTestMethod>>();
+    // Save app config
+    let app_config: config::AppConfig = serde_json::from_str(&app_config).unwrap();
+    config::save_config(&app_config, &app_state.config_write_lock);
 
     // Cleanup and validate cores to test
     let cores_to_test_parsed =
@@ -96,7 +105,12 @@ async fn start_test(
         .to_string());
     }
 
-    let config = cpu_test::CpuTestConfig {
+    let test_methods = test_methods
+        .iter()
+        .map(|method| cpu_test::CpuTestMethod::from_str(method).unwrap())
+        .collect::<Vec<cpu_test::CpuTestMethod>>();
+
+    let test_config = cpu_test::CpuTestConfig {
         test_methods,
         duration_per_core: duration_per_core.parse().unwrap(),
         cores_to_test: cores_to_test_parsed,
@@ -107,12 +121,25 @@ async fn start_test(
     // Reset terminated by user flag
     *app_state.terminated_by_user.write().unwrap() = false;
 
-    cpu_test::initialize_response(&app_state.test_status, &config)?;
+    cpu_test::initialize_response(&app_state.test_status, &test_config)?;
 
     let core_status = app_state.clone();
     thread::spawn(move || {
-        cpu_test::run(core_status, &config);
+        cpu_test::run(core_status, &test_config);
     });
+
+    Ok(())
+}
+
+#[tauri::command]
+fn set_offset(
+    core_id: usize,
+    offset: i32,
+    app_state: tauri::State<'_, AppState>,
+) -> Result<(), ()> {
+    let mut config = config::load_config(&app_state.config_write_lock);
+    config.offset_per_core.insert(core_id, offset);
+    config::save_config(&config, &app_state.config_write_lock);
 
     Ok(())
 }

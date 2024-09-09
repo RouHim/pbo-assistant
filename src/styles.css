@@ -65,8 +65,8 @@ body {
     flex-grow: 1;
 
     display: grid;
-    grid-template-columns: repeat(auto-fill, 250px);
-    grid-template-rows: repeat(auto-fill, 250px);
+    grid-template-columns: repeat(auto-fill, 260px);
+    grid-template-rows: repeat(auto-fill, 260px);
     gap: 10px;
     margin-top: 10px;
     margin-bottom: 10px;
@@ -78,12 +78,48 @@ body {
 .cpuLayout {
     width: 250px;
     height: 250px;
-    align-items: center;
-    padding: 10px;
     background-color: var(--background);
     border: 1px solid var(--border);
     border-radius: 5px;
-    box-sizing: border-box; /* Stellt sicher, dass padding und border in der Größe enthalten sind */
+    margin: 10px;
+
+    /*center the content*/
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+}
+
+.cpuLayout input {
+    width: 100%;
+    text-align: center;
+}
+
+.cpuLayout progress {
+    width: 100%;
+    border-radius: 0;
+    margin-top: auto; /* This pushes the progress bar to the bottom */
+}
+
+.cpuLayout progress[value] {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+}
+
+.cpuLayout progress[value]::-webkit-progress-bar {
+    background-color: var(--background);
+}
+
+.cpuLayout progress[value]::-webkit-progress-value {
+    background-color: var(--selection);
+}
+
+.coreId {
+    width: 100%;
+    text-align: center;
+    font-size: 1.5em;
+    border-bottom: 1px solid var(--border);
 }
 
 .buttonContainer {
@@ -92,17 +128,52 @@ body {
 }
 
 .cpu-idle {
-    background-color: var(--background);
+    border-color: var(--background);
 }
 
 .cpu-testing {
-    background-color: var(--selection);
+    border-color: var(--selection);
+    animation: shiny-border 2s infinite;
 }
 
 .cpu-success {
-    background-color: #00a000;
+    border-color: #00a000;
 }
 
 .cpu-failed {
-    background-color: #ff0000;
+    border-color: #ff0000;
+}
+
+@keyframes shiny-border {
+    0% {
+        box-shadow: 0 0 0px var(--selection);
+    }
+    50% {
+        box-shadow: 0 0 10px var(--selection);
+    }
+    100% {
+        box-shadow: 0 0 0px var(--selection);
+    }
+}
+
+.methodStatus {
+    justify-content: space-between;
+    border-bottom: 5px solid transparent;
+    margin-left: 5px;
+    margin-right: 5px;
+}
+
+.methodStatusLayout {
+    margin-top: 15px;
+}
+
+/* Hide the up and down buttons on number input */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield; /* Firefox */
 }

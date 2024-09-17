@@ -37,31 +37,20 @@ pub fn get_cpu_freq(physical_core_id: usize) -> f64 {
 }
 
 pub fn get() -> Result<CpusInfo, String> {
-    let content = match fs::read_to_string("/proc/cpuinfo") {
+    let proc_cpuinfo_string = match fs::read_to_string("/proc/cpuinfo") {
         Ok(content) => content,
         Err(_) => return Err("Failed to read /proc/cpuinfo".to_string()),
     };
 
-    let mut cpus: Vec<CpuInfo> = content
+    let mut cpus: Vec<CpuInfo> = proc_cpuinfo_string
         .split("processor")
         .map(parse_cpu_info)
         .filter(|cpu_info| !cpu_info.name.is_empty())
         .collect();
 
-    let physical_cores = cpus.iter().chunk_by(|x| x.physical_id).into_iter().count();
-    let logical_cores = cpus.len();
+    let (physical_cores, logical_cores) = get_cores_count(&proc_cpuinfo_string, &mut cpus);
 
-    // Normalize physical_id to a range between 0 and :physical_cores
-    cpus.sort_by(|a, b| a.logical_id.cmp(&b.logical_id));
-    cpus.iter_mut()
-        .chunk_by(|x| x.physical_id)
-        .into_iter()
-        .enumerate()
-        .for_each(|(group_enumeration, (_, cpus))| {
-            for cpu in cpus {
-                cpu.physical_id = group_enumeration;
-            }
-        });
+    normalize_physical_core_ids(&mut cpus);
 
     Ok(CpusInfo {
         cpus,
@@ -70,6 +59,59 @@ pub fn get() -> Result<CpusInfo, String> {
     })
 }
 
+fn normalize_physical_core_ids(cpus: &mut Vec<CpuInfo>) {
+    // Normalize physical_id to a range between 0 and :physical_cores -1
+    cpus.sort_by(|a, b| a.physical_id.cmp(&b.physical_id));
+    let cpu_chunks = cpus.clone().into_iter().chunk_by(|cpu| cpu.physical_id);
+    let cpu_chunks = cpu_chunks.into_iter().enumerate();
+
+    for (index, (_key, chunk)) in cpu_chunks {
+        let logical_cores_per_cpu: Vec<CpuInfo> = chunk.collect();
+
+        for logical_core in logical_cores_per_cpu {
+            cpus.iter_mut()
+                .find(|cpu| cpu.logical_id == logical_core.logical_id)
+                .unwrap()
+                .physical_id = index;
+        }
+    }
+    cpus.sort_by(|a, b| a.logical_id.cmp(&b.logical_id));
+}
+
+fn get_cores_count(proc_cpuinfo_string: &str, cpus: &mut Vec<CpuInfo>) -> (usize, usize) {
+    if proc_cpuinfo_string.contains("AMD") {
+        get_cores_count_amd(proc_cpuinfo_string)
+    } else if proc_cpuinfo_string.contains("Intel") {
+        get_cores_count_intel(cpus)
+    } else {
+        (0, 0)
+    }
+}
+
+fn get_cores_count_amd(proc_cpuinfo_string: &str) -> (usize, usize) {
+    let mut lines = proc_cpuinfo_string.lines();
+
+    let physical_cores = lines
+        .find(|line| line.starts_with("cpu cores"))
+        .map(|line| line.split(':').last().unwrap().trim().parse().unwrap())
+        .unwrap_or(0);
+
+    let logical_cores = lines
+        .find(|line| line.starts_with("siblings"))
+        .map(|line| line.split(':').last().unwrap().trim().parse().unwrap())
+        .unwrap_or(0);
+
+    (physical_cores, logical_cores)
+}
+
+fn get_cores_count_intel(cpus: &mut Vec<CpuInfo>) -> (usize, usize) {
+    let physical_cores = cpus.iter().chunk_by(|x| x.physical_id).into_iter().count();
+    let logical_cores = cpus.len();
+    (physical_cores, logical_cores)
+}
+
+/// Parses the cpuinfo string and returns a CpuInfo struct
+/// Detects logical_id, physical_id, name and mhz
 fn parse_cpu_info(cpu_string: &str) -> CpuInfo {
     let cpu_lines = cpu_string.trim().lines().enumerate();
 
@@ -107,4 +149,98 @@ pub fn get_physical_cores() -> usize {
 
 pub fn get_logical_cores() -> usize {
     get().unwrap().logical_cores
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_chunk_cpu_info_by_physical_id() {
+        let mut cpus = vec![
+            CpuInfo {
+                logical_id: 0,
+                physical_id: 100,
+                name: "Intel Core i7".to_string(),
+                mhz: 3000.0,
+            },
+            CpuInfo {
+                logical_id: 1,
+                physical_id: 200,
+                name: "Intel Core i7".to_string(),
+                mhz: 3000.0,
+            },
+            CpuInfo {
+                logical_id: 2,
+                physical_id: 100,
+                name: "Intel Core i7".to_string(),
+                mhz: 3000.0,
+            },
+            CpuInfo {
+                logical_id: 3,
+                physical_id: 200,
+                name: "Intel Core i7".to_string(),
+                mhz: 3000.0,
+            },
+        ];
+
+        normalize_physical_core_ids(&mut cpus);
+
+        // Check if the CPU info is correct
+        assert_eq!(cpus[0].physical_id, 0);
+        assert_eq!(cpus[0].logical_id, 0);
+        assert_eq!(cpus[1].physical_id, 1);
+        assert_eq!(cpus[1].logical_id, 1);
+        assert_eq!(cpus[2].physical_id, 0);
+        assert_eq!(cpus[2].logical_id, 2);
+        assert_eq!(cpus[3].physical_id, 1);
+        assert_eq!(cpus[3].logical_id, 3);
+    }
+
+    #[test]
+    fn test_chunk_cpu_info_by_physical_id_2() {
+        let mut cpus = vec![
+            CpuInfo {
+                logical_id: 0,
+                physical_id: 100,
+                name: "Intel Core i7".to_string(),
+                mhz: 3000.0,
+            },
+            CpuInfo {
+                logical_id: 1,
+                physical_id: 200,
+                name: "Intel Core i7".to_string(),
+                mhz: 3000.0,
+            },
+        ];
+
+        normalize_physical_core_ids(&mut cpus);
+
+        // Check if the CPU info is correct
+        assert_eq!(cpus[0].physical_id, 0);
+        assert_eq!(cpus[0].logical_id, 0);
+        assert_eq!(cpus[1].physical_id, 1);
+        assert_eq!(cpus[1].logical_id, 1);
+    }
+
+    #[test]
+    fn test_parse_amd_cpu() {
+        // Parse the CPU info
+        let cpu_info = get().unwrap();
+
+        // print the CPU info to console
+        println!("{:?}", cpu_info);
+
+        // Check if the number of physical and logical cores is correct
+        assert_eq!(cpu_info.physical_cores, 12);
+        assert_eq!(cpu_info.logical_cores, 24);
+
+        // Check if the CPU info is correct
+        assert_eq!(cpu_info.cpus[0].logical_id, 0);
+        assert_eq!(cpu_info.cpus[0].physical_id, 0);
+
+        // Check if the CPU info is correct
+        assert_eq!(cpu_info.cpus[23].physical_id, 11);
+        assert_eq!(cpu_info.cpus[23].logical_id, 23);
+    }
 }

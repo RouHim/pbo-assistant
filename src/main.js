@@ -114,18 +114,21 @@ function updateCpuStatus(cpuTestStatus) {
     }
 }
 
-// updateOffset
 // Updates the offset of the core by the given delta
-function updateOffset(coreId, delta) {
+function addValueToOffset(coreId, toAdd) {
     const offsetInput = document.getElementById(`offset${coreId}`);
-    let nextValue = parseInt(offsetInput.value) + delta;
+    let nextValue = parseInt(offsetInput.value) + toAdd;
 
     // Limit to -30 to 30
     nextValue = Math.min(30, Math.max(-30, nextValue));
 
-    invoke("set_offset", {coreId: coreId, offset: nextValue});
-    offsetInput.value = nextValue;
-    appConfig.offset_per_core[coreId] = nextValue;
+    saveOffset(coreId, nextValue, offsetInput);
+}
+
+function saveOffset(coreId, newValue, offsetInput) {
+    invoke("set_offset", {coreId: coreId, offset: newValue});
+    offsetInput.value = newValue;
+    appConfig.offset_per_core[coreId] = newValue;
 }
 
 function createCpuStatusLayout(cpuTestStatus, cpuLayout) {
@@ -155,7 +158,7 @@ function createCpuStatusLayout(cpuTestStatus, cpuLayout) {
     // "-" Button, that reduces the offset by 1
     const offsetMinusButton = document.createElement("button");
     offsetMinusButton.innerText = "-";
-    offsetMinusButton.onclick = () => updateOffset(cpuTestStatus.core_id, -1);
+    offsetMinusButton.onclick = () => addValueToOffset(cpuTestStatus.core_id, -1);
     buttonContainer.appendChild(offsetMinusButton);
 
     const offsetInput = document.createElement("input");
@@ -165,6 +168,10 @@ function createCpuStatusLayout(cpuTestStatus, cpuLayout) {
     offsetInput.min = -30;
     offsetInput.max = 30;
     buttonContainer.appendChild(offsetInput);
+    // Add on focus lost listener, also set the offset value to the app config
+    offsetInput.addEventListener("focusout", () => {
+        saveOffset(cpuTestStatus.core_id, parseInt(offsetInput.value), offsetInput);
+    });
 
     // Load the offset value from the app config from property "offset_per_core"
     // and set the value to the input field
@@ -176,7 +183,7 @@ function createCpuStatusLayout(cpuTestStatus, cpuLayout) {
     // "+" Button, that increases the offset by 1
     const offsetPlusButton = document.createElement("button");
     offsetPlusButton.innerText = "+";
-    offsetPlusButton.onclick = () => updateOffset(cpuTestStatus.core_id, 1);
+    offsetPlusButton.onclick = () => addValueToOffset(cpuTestStatus.core_id, 1);
     buttonContainer.appendChild(offsetPlusButton);
 
     // The clock speed as text eg "3600 MHz"

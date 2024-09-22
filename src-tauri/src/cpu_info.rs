@@ -11,8 +11,8 @@ pub struct CpusInfo {
 #[derive(Debug, Clone)]
 pub struct CpuInfo {
     pub id: usize,
-    pub logical_id: usize,
     pub physical_id: usize,
+    pub thread_count: usize,
     pub name: String,
     pub mhz: f64,
 }
@@ -24,7 +24,9 @@ pub fn get_first_logical_core_id_for(physical_core_id: usize) -> usize {
         .iter()
         .find(|cpu| cpu.physical_id == physical_core_id)
         .unwrap();
-    cpu.logical_id
+    
+    // TODO: find first logical core id for physical core id
+    cpu.id
 }
 
 pub fn get_cpu_freq(physical_core_id: usize) -> f64 {
@@ -49,7 +51,7 @@ pub fn get() -> Result<CpusInfo, String> {
         .filter(|cpu_info| !cpu_info.name.is_empty())
         .collect();
 
-    normalize_physical_core_ids(&mut cpus);
+    // normalize_physical_core_ids(&mut cpus);
 
     let (physical_cores, logical_cores) = get_cores_count(&proc_cpuinfo_string);
 
@@ -60,24 +62,24 @@ pub fn get() -> Result<CpusInfo, String> {
     })
 }
 
-fn normalize_physical_core_ids(cpus: &mut Vec<CpuInfo>) {
-    // Normalize physical_id to a range between 0 and :physical_cores -1
-    cpus.sort_by(|a, b| a.physical_id.cmp(&b.physical_id));
-    let cpu_chunks = cpus.clone().into_iter().chunk_by(|cpu| cpu.physical_id);
-    let cpu_chunks = cpu_chunks.into_iter().enumerate();
-
-    for (index, (_key, chunk)) in cpu_chunks {
-        let logical_cores_per_cpu: Vec<CpuInfo> = chunk.collect();
-
-        for logical_core in logical_cores_per_cpu {
-            cpus.iter_mut()
-                .find(|cpu| cpu.logical_id == logical_core.logical_id)
-                .unwrap()
-                .physical_id = index;
-        }
-    }
-    cpus.sort_by(|a, b| a.logical_id.cmp(&b.logical_id));
-}
+// fn normalize_physical_core_ids(cpus: &mut Vec<CpuInfo>) {
+//     // Normalize physical_id to a range between 0 and :physical_cores -1
+//     cpus.sort_by(|a, b| a.physical_id.cmp(&b.physical_id));
+//     let cpu_chunks = cpus.clone().into_iter().chunk_by(|cpu| cpu.physical_id);
+//     let cpu_chunks = cpu_chunks.into_iter().enumerate();
+// 
+//     for (index, (_key, chunk)) in cpu_chunks {
+//         let logical_cores_per_cpu: Vec<CpuInfo> = chunk.collect();
+// 
+//         for logical_core in logical_cores_per_cpu {
+//             cpus.iter_mut()
+//                 .find(|cpu| cpu.logical_id == logical_core.logical_id)
+//                 .unwrap()
+//                 .physical_id = index;
+//         }
+//     }
+//     cpus.sort_by(|a, b| a.logical_id.cmp(&b.logical_id));
+// }
 
 fn get_cores_count(proc_cpuinfo_string: &str) -> (usize, usize) {
     let mut lines = proc_cpuinfo_string.lines();
@@ -95,6 +97,32 @@ fn get_cores_count(proc_cpuinfo_string: &str) -> (usize, usize) {
     (physical_cores, logical_cores)
 }
 
+fn get_first_proc_cpuinfo_property(proc_cpu_info: &str, property: &str) -> String {
+    proc_cpu_info
+        .lines()
+        .find_map(|line| {
+            if line.starts_with(property) {
+                line.split(':').nth(1).map(|value| value.trim().to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default()
+}
+
+fn get_all_proc_cpuinfo_property(proc_cpu_info: &str, property: &str) -> Vec<String> {
+    proc_cpu_info
+        .lines()
+        .filter_map(|line| {
+            if line.starts_with(property) {
+                line.split(':').nth(1).map(|value| value.trim().to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 /// Parses the cpuinfo string and returns a CpuInfo struct
 /// Detects logical_id, physical_id, name and mhz
 fn parse_cpu_info(cpu_string: &str) -> CpuInfo {
@@ -102,6 +130,7 @@ fn parse_cpu_info(cpu_string: &str) -> CpuInfo {
 
     let mut id = 0;
     let mut physical_id = 0;
+    let mut thread_count = 0;
     let mut name = "".to_string();
     let mut mhz = 0.0;
 
@@ -119,14 +148,15 @@ fn parse_cpu_info(cpu_string: &str) -> CpuInfo {
             physical_id = line_data.split(':').last().unwrap().trim().parse().unwrap();
         }
     }
-    
-    // TODO: determine logical_id
-    let mut logical_id = 0;
+
+    // TODO Count threads
+    // If needed calculate logical id dynamically based on core id and thread count per core
+    thread_count = 1;
 
     CpuInfo {
         id,
-        logical_id,
         physical_id,
+        thread_count,
         name,
         mhz,
     }
@@ -144,92 +174,23 @@ pub fn get_logical_cores() -> usize {
 mod tests {
     use super::*;
 
+    const INTEL_HYPERTHREADING: &str = include_str!("../test_proc_cpuinfo/intel_hyperthreading");
+
     #[test]
-    fn test_chunk_cpu_info_by_physical_id() {
-        let mut cpus = vec![
-            CpuInfo {
-                logical_id: 0,
-                physical_id: 100,
-                name: "Intel Core i7".to_string(),
-                mhz: 3000.0,
-            },
-            CpuInfo {
-                logical_id: 1,
-                physical_id: 200,
-                name: "Intel Core i7".to_string(),
-                mhz: 3000.0,
-            },
-            CpuInfo {
-                logical_id: 2,
-                physical_id: 100,
-                name: "Intel Core i7".to_string(),
-                mhz: 3000.0,
-            },
-            CpuInfo {
-                logical_id: 3,
-                physical_id: 200,
-                name: "Intel Core i7".to_string(),
-                mhz: 3000.0,
-            },
-        ];
-
-        normalize_physical_core_ids(&mut cpus);
-
-        // Check if the CPU info is correct
-        assert_eq!(cpus[0].physical_id, 0);
-        assert_eq!(cpus[0].logical_id, 0);
-        assert_eq!(cpus[1].physical_id, 1);
-        assert_eq!(cpus[1].logical_id, 1);
-        assert_eq!(cpus[2].physical_id, 0);
-        assert_eq!(cpus[2].logical_id, 2);
-        assert_eq!(cpus[3].physical_id, 1);
-        assert_eq!(cpus[3].logical_id, 3);
+    fn test_get_proc_cpuinfo_property() {
+        let cpuinfo = INTEL_HYPERTHREADING;
+        let property = "siblings";
+        let expected = "8";
+        let result = get_first_proc_cpuinfo_property(cpuinfo, property);
+        assert_eq!(result, expected);
     }
-
+    
     #[test]
-    fn test_chunk_cpu_info_by_physical_id_2() {
-        let mut cpus = vec![
-            CpuInfo {
-                logical_id: 0,
-                physical_id: 100,
-                name: "Intel Core i7".to_string(),
-                mhz: 3000.0,
-            },
-            CpuInfo {
-                logical_id: 1,
-                physical_id: 200,
-                name: "Intel Core i7".to_string(),
-                mhz: 3000.0,
-            },
-        ];
-
-        normalize_physical_core_ids(&mut cpus);
-
-        // Check if the CPU info is correct
-        assert_eq!(cpus[0].physical_id, 0);
-        assert_eq!(cpus[0].logical_id, 0);
-        assert_eq!(cpus[1].physical_id, 1);
-        assert_eq!(cpus[1].logical_id, 1);
-    }
-
-    #[test]
-    fn test_parse_amd_cpu() {
-        // Parse the CPU info
-        let cpu_info = get().unwrap();
-
-        // print the CPU info to console
-        println!("{:?}", cpu_info);
-
-        // Check if the number of physical and logical cores is correct
-        assert_eq!(cpu_info.physical_cores, 12);
-        assert_eq!(cpu_info.logical_cores, 24);
-
-        // Check if the CPU info is correct
-        assert_eq!(cpu_info.cpus[0].logical_id, 0);
-        assert_eq!(cpu_info.cpus[0].physical_id, 0);
-
-        // Check if the CPU info is correct
-        assert_eq!(cpu_info.cpus[23].physical_id, 11);
-        assert_eq!(cpu_info.cpus[23].logical_id, 23);
+    fn test_get_all_proc_cpuinfo_property() {
+        let cpuinfo = INTEL_HYPERTHREADING;
+        let property = "core id";
+        let expected = vec!["0", "1", "2", "3", "0", "1", "2", "3"];
+        let result = get_all_proc_cpuinfo_property(cpuinfo, property);
+        assert_eq!(result, expected);
     }
 }

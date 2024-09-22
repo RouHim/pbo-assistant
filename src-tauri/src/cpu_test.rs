@@ -436,13 +436,13 @@ fn check_time_left(
 
 fn start_test_program_for_core(
     cpu_test_method: CpuTestMethod,
-    core_id: usize,
+    physical_core_id: usize,
     pid: Arc<RwLock<u32>>,
     test_program_process: Arc<RwLock<Option<Child>>>,
 ) {
     let child = match cpu_test_method {
-        CpuTestMethod::Prime95 => mprime::start_verification(core_id),
-        CpuTestMethod::YCruncher => ycruncher::start_verification(core_id),
+        CpuTestMethod::Prime95 => mprime::start_verification(physical_core_id),
+        CpuTestMethod::YCruncher => ycruncher::start_verification(physical_core_id),
     };
 
     // Set the pid of the child process

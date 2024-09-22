@@ -10,6 +10,7 @@ pub struct CpusInfo {
 
 #[derive(Debug, Clone)]
 pub struct CpuInfo {
+    pub id: usize,
     pub logical_id: usize,
     pub physical_id: usize,
     pub name: String,
@@ -50,7 +51,7 @@ pub fn get() -> Result<CpusInfo, String> {
 
     normalize_physical_core_ids(&mut cpus);
 
-    let (physical_cores, logical_cores) = get_cores_count(&proc_cpuinfo_string, &mut cpus);
+    let (physical_cores, logical_cores) = get_cores_count(&proc_cpuinfo_string);
 
     Ok(CpusInfo {
         cpus,
@@ -78,17 +79,7 @@ fn normalize_physical_core_ids(cpus: &mut Vec<CpuInfo>) {
     cpus.sort_by(|a, b| a.logical_id.cmp(&b.logical_id));
 }
 
-fn get_cores_count(proc_cpuinfo_string: &str, cpus: &mut Vec<CpuInfo>) -> (usize, usize) {
-    if proc_cpuinfo_string.contains("AMD") {
-        get_cores_count_amd(proc_cpuinfo_string)
-    } else if proc_cpuinfo_string.contains("Intel") {
-        get_cores_count_intel(cpus)
-    } else {
-        (0, 0)
-    }
-}
-
-fn get_cores_count_amd(proc_cpuinfo_string: &str) -> (usize, usize) {
+fn get_cores_count(proc_cpuinfo_string: &str) -> (usize, usize) {
     let mut lines = proc_cpuinfo_string.lines();
 
     let physical_cores = lines
@@ -104,18 +95,12 @@ fn get_cores_count_amd(proc_cpuinfo_string: &str) -> (usize, usize) {
     (physical_cores, logical_cores)
 }
 
-fn get_cores_count_intel(cpus: &mut [CpuInfo]) -> (usize, usize) {
-    let physical_cores = cpus.iter().unique_by(|cpu| cpu.physical_id).count();
-    let logical_cores = cpus.len();
-    (physical_cores, logical_cores)
-}
-
 /// Parses the cpuinfo string and returns a CpuInfo struct
 /// Detects logical_id, physical_id, name and mhz
 fn parse_cpu_info(cpu_string: &str) -> CpuInfo {
     let cpu_lines = cpu_string.trim().lines().enumerate();
 
-    let mut logical_id = 0;
+    let mut id = 0;
     let mut physical_id = 0;
     let mut name = "".to_string();
     let mut mhz = 0.0;
@@ -125,7 +110,7 @@ fn parse_cpu_info(cpu_string: &str) -> CpuInfo {
         let line_data = cpu_line.1;
 
         if line_index == 0 {
-            logical_id = line_data.replace(':', "").trim().parse().unwrap();
+            id = line_data.replace(':', "").trim().parse().unwrap();
         } else if line_data.starts_with("model name") {
             name = line_data.split(':').last().unwrap().trim().to_string();
         } else if line_data.starts_with("cpu MHz") {
@@ -134,8 +119,12 @@ fn parse_cpu_info(cpu_string: &str) -> CpuInfo {
             physical_id = line_data.split(':').last().unwrap().trim().parse().unwrap();
         }
     }
+    
+    // TODO: determine logical_id
+    let mut logical_id = 0;
 
     CpuInfo {
+        id,
         logical_id,
         physical_id,
         name,

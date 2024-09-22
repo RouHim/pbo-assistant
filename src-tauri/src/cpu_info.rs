@@ -48,9 +48,9 @@ pub fn get() -> Result<CpusInfo, String> {
         .filter(|cpu_info| !cpu_info.name.is_empty())
         .collect();
 
-    let (physical_cores, logical_cores) = get_cores_count(&proc_cpuinfo_string, &mut cpus);
-
     normalize_physical_core_ids(&mut cpus);
+
+    let (physical_cores, logical_cores) = get_cores_count(&proc_cpuinfo_string, &mut cpus);
 
     Ok(CpusInfo {
         cpus,
@@ -104,8 +104,8 @@ fn get_cores_count_amd(proc_cpuinfo_string: &str) -> (usize, usize) {
     (physical_cores, logical_cores)
 }
 
-fn get_cores_count_intel(cpus: &mut Vec<CpuInfo>) -> (usize, usize) {
-    let physical_cores = cpus.iter().chunk_by(|x| x.physical_id).into_iter().count();
+fn get_cores_count_intel(cpus: &mut [CpuInfo]) -> (usize, usize) {
+    let physical_cores = cpus.iter().unique_by(|cpu| cpu.physical_id).count();
     let logical_cores = cpus.len();
     (physical_cores, logical_cores)
 }

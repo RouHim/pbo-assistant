@@ -1,17 +1,16 @@
 use itertools::Itertools;
 use std::fs;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CpusInfo {
     pub cpus: Vec<CpuInfo>,
     pub physical_cores: usize,
     pub logical_cores: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CpuInfo {
     pub id: usize,
-    pub physical_id: usize,
     pub thread_count: usize,
     pub name: String,
     pub mhz: f64,
@@ -22,7 +21,7 @@ pub fn get_first_logical_core_id_for(physical_core_id: usize) -> usize {
     let cpu = cpu_info
         .cpus
         .iter()
-        .find(|cpu| cpu.physical_id == physical_core_id)
+        .find(|cpu| cpu.id == physical_core_id)
         .unwrap();
     
     // TODO: find first logical core id for physical core id
@@ -45,13 +44,7 @@ pub fn get() -> Result<CpusInfo, String> {
         Err(_) => return Err("Failed to read /proc/cpuinfo".to_string()),
     };
 
-    let mut cpus: Vec<CpuInfo> = proc_cpuinfo_string
-        .split("processor")
-        .map(parse_cpu_info)
-        .filter(|cpu_info| !cpu_info.name.is_empty())
-        .collect();
-
-    // normalize_physical_core_ids(&mut cpus);
+    let mut cpus: Vec<CpuInfo> = parse_cpus_info(&proc_cpuinfo_string);
 
     let (physical_cores, logical_cores) = get_cores_count(&proc_cpuinfo_string);
 
@@ -62,6 +55,68 @@ pub fn get() -> Result<CpusInfo, String> {
     })
 }
 
+struct ProcCpuInfo{
+    processor: usize,
+    core_id: usize,
+}
+
+fn parse_cpus_info(proc_cpuinfo: &str) -> Vec<CpuInfo> {
+    let cpu_split = proc_cpuinfo.split("\n\n").collect::<Vec<&str>>();
+    let mut cpus: Vec<ProcCpuInfo> = cpu_split.iter().flat_map(parse_cpuinfo).collect();
+
+    cpus.sort_by(|a, b| a.processor.cmp(&b.processor));
+
+    transform_to_cpu_info(&cpus, &cpu_split)
+}
+
+fn transform_to_cpu_info(cpus: &[ProcCpuInfo], cpu_split: &[&str]) -> Vec<CpuInfo> {
+    let mut physical_cores: Vec<CpuInfo> = vec![];
+
+    for cpu in cpus {
+        if !physical_cores.iter().any(|c| c.id == cpu.core_id) {
+            let threads = count_threads_for_core(cpus, cpu.core_id);
+            let cpu_info = find_and_parse_cpu_info(cpu_split, cpu.processor);
+
+            physical_cores.push(CpuInfo {
+                id: cpu_info.id,
+                thread_count: threads,
+                name: cpu_info.name,
+                mhz: cpu_info.mhz,
+            });
+        }
+    }
+
+    physical_cores
+}
+
+fn count_threads_for_core(cpus: &[ProcCpuInfo], core_id: usize) -> usize {
+    cpus.iter().filter(|c| c.core_id == core_id).count()
+}
+
+fn find_and_parse_cpu_info(cpu_split: &[&str], processor: usize) -> CpuInfo {
+    let cpuinfo_str = cpu_split
+        .iter()
+        .find(|c| c.contains(&format!("processor\t: {}", processor)))
+        .unwrap();
+
+    parse_cpu_info(cpuinfo_str)
+}
+
+fn parse_cpuinfo(cpuinfo_str: &&str) -> Option<ProcCpuInfo> {
+    let processor = get_first_proc_cpuinfo_property(cpuinfo_str, "processor")
+        .parse();
+    let core_id = get_first_proc_cpuinfo_property(cpuinfo_str, "core id")
+        .parse();
+
+    if processor.is_err() || core_id.is_err() {
+        return None;
+    }
+
+    Some(ProcCpuInfo {
+        processor: processor.unwrap(),
+        core_id: core_id.unwrap(),
+    })
+}
 // fn normalize_physical_core_ids(cpus: &mut Vec<CpuInfo>) {
 //     // Normalize physical_id to a range between 0 and :physical_cores -1
 //     cpus.sort_by(|a, b| a.physical_id.cmp(&b.physical_id));
@@ -82,16 +137,12 @@ pub fn get() -> Result<CpusInfo, String> {
 // }
 
 fn get_cores_count(proc_cpuinfo_string: &str) -> (usize, usize) {
-    let mut lines = proc_cpuinfo_string.lines();
-
-    let physical_cores = lines
-        .find(|line| line.starts_with("cpu cores"))
-        .map(|line| line.split(':').last().unwrap().trim().parse().unwrap())
+    let physical_cores = get_first_proc_cpuinfo_property(proc_cpuinfo_string, "cpu cores")
+        .parse()
         .unwrap_or(0);
 
-    let logical_cores = lines
-        .find(|line| line.starts_with("siblings"))
-        .map(|line| line.split(':').last().unwrap().trim().parse().unwrap())
+    let logical_cores = get_first_proc_cpuinfo_property(proc_cpuinfo_string, "siblings")
+        .parse()
         .unwrap_or(0);
 
     (physical_cores, logical_cores)
@@ -130,7 +181,6 @@ fn parse_cpu_info(cpu_string: &str) -> CpuInfo {
 
     let mut id = 0;
     let mut physical_id = 0;
-    let mut thread_count = 0;
     let mut name = "".to_string();
     let mut mhz = 0.0;
 
@@ -139,7 +189,7 @@ fn parse_cpu_info(cpu_string: &str) -> CpuInfo {
         let line_data = cpu_line.1;
 
         if line_index == 0 {
-            id = line_data.replace(':', "").trim().parse().unwrap();
+            id = line_data.split(':').last().unwrap().trim().parse().unwrap();
         } else if line_data.starts_with("model name") {
             name = line_data.split(':').last().unwrap().trim().to_string();
         } else if line_data.starts_with("cpu MHz") {
@@ -149,14 +199,9 @@ fn parse_cpu_info(cpu_string: &str) -> CpuInfo {
         }
     }
 
-    // TODO Count threads
-    // If needed calculate logical id dynamically based on core id and thread count per core
-    thread_count = 1;
-
     CpuInfo {
-        id,
-        physical_id,
-        thread_count,
+        id: physical_id,
+        thread_count: 0,
         name,
         mhz,
     }
@@ -172,25 +217,90 @@ pub fn get_logical_cores() -> usize {
 
 #[cfg(test)]
 mod tests {
+    use assertor::{assert_that, EqualityAssertion};
     use super::*;
 
     const INTEL_HYPERTHREADING: &str = include_str!("../test_proc_cpuinfo/intel_hyperthreading");
+    const AMD_HYPERTHREADING: &str = include_str!("../test_proc_cpuinfo/amd_hyperthreading");
 
     #[test]
-    fn test_get_proc_cpuinfo_property() {
+    fn test_get_proc_cpuinfo_property_intel_ht() {
+        // GIVEN
         let cpuinfo = INTEL_HYPERTHREADING;
         let property = "siblings";
-        let expected = "8";
+
+        // WHEN
         let result = get_first_proc_cpuinfo_property(cpuinfo, property);
-        assert_eq!(result, expected);
+
+        // THEN
+        assert_eq!(result, "8");
     }
     
     #[test]
-    fn test_get_all_proc_cpuinfo_property() {
+    fn test_get_all_proc_cpuinfo_property_intel_ht() {
+        // GIVEN
         let cpuinfo = INTEL_HYPERTHREADING;
         let property = "core id";
-        let expected = vec!["0", "1", "2", "3", "0", "1", "2", "3"];
+
+        // WHEN
         let result = get_all_proc_cpuinfo_property(cpuinfo, property);
-        assert_eq!(result, expected);
+
+        //THEN
+        assert_eq!(result, vec!["0", "1", "2", "3", "0", "1", "2", "3"]);
+    }
+
+    #[test]
+    fn test_parse_cpus_info_intel_ht() {
+        // GIVEN
+        let cpuinfo = INTEL_HYPERTHREADING;
+        let property = "core id";
+
+        // WHEN
+        let result = parse_cpus_info(cpuinfo);
+
+        // THEN
+        assert_that!(result)
+            .is_equal_to(vec![
+                CpuInfo {
+                    id: 0,
+                    physical_id: 0,
+                    thread_count: 4,
+                    name: "Intel(R) Core(TM) i7-7700HQ CPU @ 2.80GHz".to_string(),
+                    mhz: 2800.0,
+                },
+                CpuInfo {
+                    id: 4,
+                    physical_id: 1,
+                    thread_count: 4,
+                    name: "Intel(R) Core(TM) i7-7700HQ CPU @ 2.80GHz".to_string(),
+                    mhz: 2800.0,
+                },
+            ]);
+    }
+
+    #[test]
+    fn test_get_proc_cpuinfo_property_amd_ht() {
+        // GIVEN
+        let cpuinfo = AMD_HYPERTHREADING;
+        let property = "siblings";
+
+        // WHEN
+        let result = get_first_proc_cpuinfo_property(cpuinfo, property);
+
+        // THEN
+        assert_eq!(result, "24");
+    }
+
+    #[test]
+    fn test_get_all_proc_cpuinfo_property_amd_ht() {
+        // GIVEN
+        let cpuinfo = AMD_HYPERTHREADING;
+        let property = "core id";
+
+        // WHEN
+        let result = get_all_proc_cpuinfo_property(cpuinfo, property);
+
+        // THEN
+        assert_eq!(result, vec!["0", "1", "2", "3", "4", "5", "8", "9", "10", "11", "12", "13", "0", "1", "2", "3", "4", "5", "8", "9", "10", "11", "12", "13"]);
     }
 }

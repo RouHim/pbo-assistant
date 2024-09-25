@@ -26,6 +26,7 @@ strum_macros = "0.26.4"
 itertools = "0.13.0"
 lazy_static = "1.5"
 dirs = "5.0"
+log = "0.4.22"
 
 [dev-dependencies]
 assertor = "0.0.2"

@@ -2445,6 +2445,7 @@ dependencies = [
  "flate2",
  "itertools",
  "lazy_static",
+ "log",
  "parse_duration",
  "pretty_assertions",
  "serde",

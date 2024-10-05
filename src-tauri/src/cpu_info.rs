@@ -1,4 +1,5 @@
 use std::fs;
+use itertools::Itertools;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CpusInfo {
@@ -10,6 +11,7 @@ pub struct CpusInfo {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CpuInfo {
     pub id: usize,
+    pub proc_cpu_id: usize,
     pub thread_count: usize,
     pub name: String,
     pub mhz: f64,
@@ -38,12 +40,14 @@ pub fn get_first_logical_core_id_for(physical_core_id: usize) -> usize {
 
 pub fn get_cpu_freq(physical_core_id: usize) -> f64 {
     let cpu_info = get().unwrap();
-    let cpu = cpu_info
-        .cpus
-        .iter()
-        .find(|cpu| cpu.id == physical_core_id)
-        .unwrap();
-    cpu.mhz
+
+    for cpu in cpu_info.cpus {
+        if cpu.id == physical_core_id {
+            return cpu.mhz;
+        }
+    }
+    
+    0.0
 }
 
 pub fn get() -> Result<CpusInfo, String> {
@@ -64,23 +68,26 @@ pub fn get() -> Result<CpusInfo, String> {
 }
 
 fn parse_cpus_info(proc_cpuinfo: &str) -> Vec<CpuInfo> {
-    let cpu_split = proc_cpuinfo.split("\n\n").collect::<Vec<&str>>();
+    let cpu_infos: Vec<ProcCpuInfo> = proc_cpuinfo
+        .split("\n\n")
+        .flat_map(parse_cpuinfo)
+        .sorted_by(|a, b| a.processor.cmp(&b.processor))
+        .collect();
 
-    let mut proc_cpu_infos: Vec<ProcCpuInfo> = cpu_split.iter().flat_map(parse_cpuinfo).collect();
-
-    proc_cpu_infos.sort_by(|a, b| a.core_id.cmp(&b.core_id));
-
-    transform_to_cpu_info(&proc_cpu_infos, proc_cpuinfo)
+    transform_to_cpu_info(cpu_infos, proc_cpuinfo)
 }
 
-fn transform_to_cpu_info(proc_cpuinfos: &[ProcCpuInfo], proc_cpuinfo: &str) -> Vec<CpuInfo> {
+
+/// Transforms the given proc_cpuinfos into an CpuInfo struct
+fn transform_to_cpu_info(parsed_cpu_info: Vec<ProcCpuInfo>, proc_cpuinfo: &str) -> Vec<CpuInfo> {
     let mut physical_cores: Vec<CpuInfo> = vec![];
 
-    // group by proc_cpuinfos.core.id
-    let core_chunks = proc_cpuinfos.chunk_by(|a, b| a.core_id == b.core_id);
+    // Group by core.id
+    let cpu_info_by_core_id = parsed_cpu_info.chunk_by(|a, b| a.core_id == b.core_id);
 
-    for (iter_index, core_chunk) in core_chunks.enumerate() {
+    for (iter_index, core_chunk) in cpu_info_by_core_id.enumerate() {
         // Sort logical threads by processor
+        // FIXME: this is broken
         let mut core_chunk = core_chunk.to_vec();
         core_chunk.sort_by(|a, b| a.processor.cmp(&b.processor));
 
@@ -101,9 +108,13 @@ fn transform_to_cpu_info(proc_cpuinfos: &[ProcCpuInfo], proc_cpuinfo: &str) -> V
         )
         .parse()
         .unwrap_or(0.0);
+        
+        // print ids and mhs for each core
+        println!("Core: {} ({}), Mhz: {}", iter_index, first_logical_thread.processor, mhz);
 
         physical_cores.push(CpuInfo {
             id: iter_index,
+            proc_cpu_id: first_logical_thread.processor,
             thread_count,
             name,
             mhz,
@@ -136,7 +147,8 @@ fn get_proc_cpuinfo_property_by_processor(
     property_value
 }
 
-fn parse_cpuinfo(cpuinfo_str: &&str) -> Option<ProcCpuInfo> {
+/// Parses the given /proc/cpuinfo string into a ProcCpuInfo struct
+fn parse_cpuinfo(cpuinfo_str: &str) -> Option<ProcCpuInfo> {
     let processor = get_first_proc_cpuinfo_property(cpuinfo_str, "processor").parse();
     let core_id = get_first_proc_cpuinfo_property(cpuinfo_str, "core id").parse();
 
@@ -216,24 +228,28 @@ mod tests {
         assert_that!(result).is_equal_to(vec![
             CpuInfo {
                 id: 0,
+                proc_cpu_id: 0,
                 thread_count: 2,
                 name: "Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz".to_string(),
                 mhz: 800.071,
             },
             CpuInfo {
                 id: 1,
+                proc_cpu_id: 1,
                 thread_count: 2,
                 name: "Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz".to_string(),
                 mhz: 799.998,
             },
             CpuInfo {
                 id: 2,
+                proc_cpu_id: 2,
                 thread_count: 2,
                 name: "Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz".to_string(),
                 mhz: 800.000,
             },
             CpuInfo {
                 id: 3,
+                proc_cpu_id: 3,
                 thread_count: 2,
                 name: "Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz".to_string(),
                 mhz: 800.000,
@@ -253,24 +269,28 @@ mod tests {
         assert_that!(result).is_equal_to(vec![
             CpuInfo {
                 id: 0,
+                proc_cpu_id: 0,
                 thread_count: 2,
                 name: "AMD Ryzen 9 5900X 12-Core Processor".to_string(),
                 mhz: 2200.0,
             },
             CpuInfo {
                 id: 1,
+                proc_cpu_id: 1,
                 thread_count: 2,
                 name: "AMD Ryzen 9 5900X 12-Core Processor".to_string(),
                 mhz: 2200.034,
             },
             CpuInfo {
                 id: 2,
+                proc_cpu_id: 2,
                 thread_count: 2,
                 name: "AMD Ryzen 9 5900X 12-Core Processor".to_string(),
                 mhz: 2200.0,
             },
             CpuInfo {
                 id: 3,
+                proc_cpu_id: 3,
                 thread_count: 2,
                 name: "AMD Ryzen 9 5900X 12-Core Processor".to_string(),
                 mhz: 2200.0,

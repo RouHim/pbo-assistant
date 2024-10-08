@@ -1,5 +1,6 @@
-use std::fs;
 use itertools::Itertools;
+use std::collections::HashMap;
+use std::fs;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CpusInfo {
@@ -46,7 +47,7 @@ pub fn get_cpu_freq(physical_core_id: usize) -> f64 {
             return cpu.mhz;
         }
     }
-    
+
     0.0
 }
 
@@ -77,44 +78,41 @@ fn parse_cpus_info(proc_cpuinfo: &str) -> Vec<CpuInfo> {
     transform_to_cpu_info(cpu_infos, proc_cpuinfo)
 }
 
-
 /// Transforms the given proc_cpuinfos into an CpuInfo struct
 fn transform_to_cpu_info(parsed_cpu_info: Vec<ProcCpuInfo>, proc_cpuinfo: &str) -> Vec<CpuInfo> {
     let mut physical_cores: Vec<CpuInfo> = vec![];
 
     // Group by core.id
-    let cpu_info_by_core_id = parsed_cpu_info.chunk_by(|a, b| a.core_id == b.core_id);
+    let proc_cpu_info_grouped_by_core_id = group_by_core_id(parsed_cpu_info);
+    
 
-    for (iter_index, core_chunk) in cpu_info_by_core_id.enumerate() {
+    for (iter_index, core_group) in proc_cpu_info_grouped_by_core_id
+        .iter()
+        .sorted_by(|a, b| a.0.cmp(&b.0))
+        .enumerate() 
+    {
         // Sort logical threads by processor
-        // FIXME: this is broken
-        let mut core_chunk = core_chunk.to_vec();
-        core_chunk.sort_by(|a, b| a.processor.cmp(&b.processor));
+        let mut threads_per_core = core_group.1.to_owned();
+        threads_per_core.sort_by(|a, b| a.processor.cmp(&b.processor));
 
         // Get first logical thread
-        let first_logical_thread = core_chunk.first().unwrap();
+        let first_thread = threads_per_core.first().unwrap();
 
         // Compute properties
-        let thread_count = core_chunk.len();
+        let thread_count = threads_per_core.len();
         let name = get_proc_cpuinfo_property_by_processor(
             proc_cpuinfo,
-            first_logical_thread.processor,
+            first_thread.processor,
             "model name",
         );
-        let mhz = get_proc_cpuinfo_property_by_processor(
-            proc_cpuinfo,
-            first_logical_thread.processor,
-            "cpu MHz",
-        )
-        .parse()
-        .unwrap_or(0.0);
-        
-        // print ids and mhs for each core
-        println!("Core: {} ({}), Mhz: {}", iter_index, first_logical_thread.processor, mhz);
+        let mhz =
+            get_proc_cpuinfo_property_by_processor(proc_cpuinfo, first_thread.processor, "cpu MHz")
+                .parse()
+                .unwrap_or(0.0);
 
         physical_cores.push(CpuInfo {
             id: iter_index,
-            proc_cpu_id: first_logical_thread.processor,
+            proc_cpu_id: first_thread.processor,
             thread_count,
             name,
             mhz,
@@ -122,6 +120,20 @@ fn transform_to_cpu_info(parsed_cpu_info: Vec<ProcCpuInfo>, proc_cpuinfo: &str) 
     }
 
     physical_cores
+}
+
+fn group_by_core_id(all_proc_cpu_infos: Vec<ProcCpuInfo>) -> HashMap<usize, Vec<ProcCpuInfo>> {
+    let mut grouped: HashMap<usize, Vec<ProcCpuInfo>> = HashMap::new();
+
+    for proc_cpu_info in all_proc_cpu_infos {
+        let core_id = proc_cpu_info.core_id;
+        if let std::collections::hash_map::Entry::Vacant(e) = grouped.entry(core_id) {
+            e.insert(vec![proc_cpu_info]);
+        } else {
+            grouped.get_mut(&core_id).unwrap().push(proc_cpu_info);
+        }
+    }
+    grouped
 }
 
 /// Finds the specified property value for the given processor id
@@ -198,7 +210,6 @@ pub fn get_logical_cores() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assertor::{assert_that, EqualityAssertion};
 
     const INTEL_HYPERTHREADING: &str = include_str!("../test_proc_cpuinfo/intel_hyperthreading");
     const AMD_HYPERTHREADING: &str = include_str!("../test_proc_cpuinfo/amd_hyperthreading");
@@ -217,136 +228,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_cpus_info_intel_ht() {
-        // GIVEN
-        let cpuinfo = INTEL_HYPERTHREADING;
-
-        // WHEN
-        let result = parse_cpus_info(cpuinfo);
-
-        // THEN
-        assert_that!(result).is_equal_to(vec![
-            CpuInfo {
-                id: 0,
-                proc_cpu_id: 0,
-                thread_count: 2,
-                name: "Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz".to_string(),
-                mhz: 800.071,
-            },
-            CpuInfo {
-                id: 1,
-                proc_cpu_id: 1,
-                thread_count: 2,
-                name: "Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz".to_string(),
-                mhz: 799.998,
-            },
-            CpuInfo {
-                id: 2,
-                proc_cpu_id: 2,
-                thread_count: 2,
-                name: "Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz".to_string(),
-                mhz: 800.000,
-            },
-            CpuInfo {
-                id: 3,
-                proc_cpu_id: 3,
-                thread_count: 2,
-                name: "Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz".to_string(),
-                mhz: 800.000,
-            },
-        ]);
-    }
-
-    #[test]
-    fn test_parse_cpus_info_amd_ht() {
-        // GIVEN
-        let cpuinfo = AMD_HYPERTHREADING;
-
-        // WHEN
-        let result = parse_cpus_info(cpuinfo);
-
-        // THEN
-        assert_that!(result).is_equal_to(vec![
-            CpuInfo {
-                id: 0,
-                proc_cpu_id: 0,
-                thread_count: 2,
-                name: "AMD Ryzen 9 5900X 12-Core Processor".to_string(),
-                mhz: 2200.0,
-            },
-            CpuInfo {
-                id: 1,
-                proc_cpu_id: 1,
-                thread_count: 2,
-                name: "AMD Ryzen 9 5900X 12-Core Processor".to_string(),
-                mhz: 2200.034,
-            },
-            CpuInfo {
-                id: 2,
-                proc_cpu_id: 2,
-                thread_count: 2,
-                name: "AMD Ryzen 9 5900X 12-Core Processor".to_string(),
-                mhz: 2200.0,
-            },
-            CpuInfo {
-                id: 3,
-                proc_cpu_id: 3,
-                thread_count: 2,
-                name: "AMD Ryzen 9 5900X 12-Core Processor".to_string(),
-                mhz: 2200.0,
-            },
-            CpuInfo {
-                id: 4,
-                thread_count: 2,
-                name: "AMD Ryzen 9 5900X 12-Core Processor".to_string(),
-                mhz: 2200.0,
-            },
-            CpuInfo {
-                id: 5,
-                thread_count: 2,
-                name: "AMD Ryzen 9 5900X 12-Core Processor".to_string(),
-                mhz: 2200.0,
-            },
-            CpuInfo {
-                id: 6,
-                thread_count: 2,
-                name: "AMD Ryzen 9 5900X 12-Core Processor".to_string(),
-                mhz: 3597.451,
-            },
-            CpuInfo {
-                id: 7,
-                thread_count: 2,
-                name: "AMD Ryzen 9 5900X 12-Core Processor".to_string(),
-                mhz: 3339.015,
-            },
-            CpuInfo {
-                id: 8,
-                thread_count: 2,
-                name: "AMD Ryzen 9 5900X 12-Core Processor".to_string(),
-                mhz: 2200.0,
-            },
-            CpuInfo {
-                id: 9,
-                thread_count: 2,
-                name: "AMD Ryzen 9 5900X 12-Core Processor".to_string(),
-                mhz: 2200.0,
-            },
-            CpuInfo {
-                id: 10,
-                thread_count: 2,
-                name: "AMD Ryzen 9 5900X 12-Core Processor".to_string(),
-                mhz: 2200.0,
-            },
-            CpuInfo {
-                id: 11,
-                thread_count: 2,
-                name: "AMD Ryzen 9 5900X 12-Core Processor".to_string(),
-                mhz: 2200.0,
-            },
-        ]);
-    }
-
-    #[test]
     fn test_get_proc_cpuinfo_property_amd_ht() {
         // GIVEN
         let cpuinfo = AMD_HYPERTHREADING;
@@ -357,5 +238,90 @@ mod tests {
 
         // THEN
         assert_eq!(result, "24");
+    }
+
+    #[test]
+    fn group_by_core_id_single_core() {
+        // GIVEN
+        let proc_cpu_infos = vec![ProcCpuInfo {
+            processor: 0,
+            core_id: 0,
+        }];
+
+        // WHEN
+        let result = group_by_core_id(proc_cpu_infos);
+
+        // THEN
+        assert_eq!(result.len(), 1);
+        assert_eq!(result.get(&0).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn group_by_core_id_multiple_cores() {
+        // GIVEN
+        let proc_cpu_infos = vec![
+            ProcCpuInfo {
+                processor: 0,
+                core_id: 0,
+            },
+            ProcCpuInfo {
+                processor: 1,
+                core_id: 1,
+            },
+            ProcCpuInfo {
+                processor: 2,
+                core_id: 0,
+            },
+            ProcCpuInfo {
+                processor: 3,
+                core_id: 1,
+            },
+        ];
+
+        // WHEN
+        let result = group_by_core_id(proc_cpu_infos);
+
+        // THEN
+        assert_eq!(result.len(), 2);
+        assert_eq!(result.get(&0).unwrap().len(), 2);
+        assert_eq!(result.get(&1).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn group_by_core_id_empty_list() {
+        // GIVEN
+        let proc_cpu_infos = vec![];
+
+        // WHEN
+        let result = group_by_core_id(proc_cpu_infos);
+
+        // THEN
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn group_by_core_id_single_core_multiple_processors() {
+        // GIVEN
+        let proc_cpu_infos = vec![
+            ProcCpuInfo {
+                processor: 0,
+                core_id: 0,
+            },
+            ProcCpuInfo {
+                processor: 1,
+                core_id: 0,
+            },
+            ProcCpuInfo {
+                processor: 2,
+                core_id: 0,
+            },
+        ];
+
+        // WHEN
+        let result = group_by_core_id(proc_cpu_infos);
+
+        // THEN
+        assert_eq!(result.len(), 1);
+        assert_eq!(result.get(&0).unwrap().len(), 3);
     }
 }

@@ -191,7 +191,7 @@ function createCpuStatusLayout(cpuTestStatus, cpuLayout) {
     const maxClockTextNode = document.createElement("span");
     maxClockTextNode.id = `${cpuTestStatus.core_id}Clock`;
     maxClockTextNode.innerText = `${cpuTestStatus.max_clock} MHz`;
-    maxClockTextNode.title = "Max Clock of the CPU";
+    maxClockTextNode.title = "Maximum Clock of the Core";
     cpuLayout.appendChild(maxClockTextNode);
 
     // The test methods in one line as dedicated spans

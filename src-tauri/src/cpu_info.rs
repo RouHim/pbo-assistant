@@ -22,6 +22,8 @@ pub struct CpuInfo {
 struct ProcCpuInfo {
     processor: usize,
     core_id: usize,
+    name: String,
+    mhz: f64,
 }
 
 pub fn get_first_logical_core_id_for(physical_core_id: usize) -> usize {
@@ -75,21 +77,20 @@ fn parse_cpus_info(proc_cpuinfo: &str) -> Vec<CpuInfo> {
         .sorted_by(|a, b| a.processor.cmp(&b.processor))
         .collect();
 
-    transform_to_cpu_info(cpu_infos, proc_cpuinfo)
+    transform_to_cpu_info(cpu_infos)
 }
 
 /// Transforms the given proc_cpuinfos into an CpuInfo struct
-fn transform_to_cpu_info(parsed_cpu_info: Vec<ProcCpuInfo>, proc_cpuinfo: &str) -> Vec<CpuInfo> {
+fn transform_to_cpu_info(parsed_cpu_info: Vec<ProcCpuInfo>) -> Vec<CpuInfo> {
     let mut physical_cores: Vec<CpuInfo> = vec![];
 
     // Group by core.id
     let proc_cpu_info_grouped_by_core_id = group_by_core_id(parsed_cpu_info);
-    
 
     for (iter_index, core_group) in proc_cpu_info_grouped_by_core_id
         .iter()
-        .sorted_by(|a, b| a.0.cmp(&b.0))
-        .enumerate() 
+        .sorted_by(|a, b| a.0.cmp(b.0))
+        .enumerate()
     {
         // Sort logical threads by processor
         let mut threads_per_core = core_group.1.to_owned();
@@ -98,25 +99,13 @@ fn transform_to_cpu_info(parsed_cpu_info: Vec<ProcCpuInfo>, proc_cpuinfo: &str) 
         // Get first logical thread
         let first_thread = threads_per_core.first().unwrap();
 
-        // Compute properties
-        let thread_count = threads_per_core.len();
-        let name = get_proc_cpuinfo_property_by_processor(
-            proc_cpuinfo,
-            first_thread.processor,
-            "model name",
-        );
-        let mhz =
-            get_proc_cpuinfo_property_by_processor(proc_cpuinfo, first_thread.processor, "cpu MHz")
-                .parse()
-                .unwrap_or(0.0);
-
         physical_cores.push(CpuInfo {
             id: iter_index,
             proc_cpu_id: first_thread.processor,
-            thread_count,
-            name,
-            mhz,
-        })
+            thread_count: threads_per_core.len(),
+            name: first_thread.name.clone(),
+            mhz: first_thread.mhz,
+        });
     }
 
     physical_cores
@@ -136,41 +125,43 @@ fn group_by_core_id(all_proc_cpu_infos: Vec<ProcCpuInfo>) -> HashMap<usize, Vec<
     grouped
 }
 
-/// Finds the specified property value for the given processor id
-fn get_proc_cpuinfo_property_by_processor(
-    proc_cpu_info: &str,
-    processor_id: usize,
-    prperty_name: &str,
-) -> String {
-    let cpuinfo = proc_cpu_info.lines().collect::<Vec<&str>>();
-    let mut property_value = String::new();
+/// Parses the given /proc/cpuinfo string into a ProcCpuInfo struct
+fn parse_cpuinfo(cpuinfo_str: &str) -> Option<ProcCpuInfo> {
+    let mut processor = None;
+    let mut core_id = None;
+    let mut name = None;
+    let mut mhz = None;
 
-    for (index, line) in cpuinfo.iter().enumerate() {
-        if line.starts_with("processor") && line.ends_with(&processor_id.to_string()) {
-            for next_line in &cpuinfo[index..] {
-                if next_line.starts_with(prperty_name) {
-                    property_value = next_line.split(":").nth(1).unwrap().trim().to_string();
-                    break;
-                }
-            }
+    for line in cpuinfo_str.lines() {
+        if line.starts_with("processor") {
+            processor = line
+                .split(':')
+                .nth(1)
+                .and_then(|value| value.trim().parse().ok());
+        } else if line.starts_with("core id") {
+            core_id = line
+                .split(':')
+                .nth(1)
+                .and_then(|value| value.trim().parse().ok());
+        } else if line.starts_with("model name") {
+            name = line.split(':').nth(1).map(|value| value.trim().to_string());
+        } else if line.starts_with("cpu MHz") {
+            mhz = line
+                .split(':')
+                .nth(1)
+                .and_then(|value| value.trim().parse().ok());
         }
     }
 
-    property_value
-}
-
-/// Parses the given /proc/cpuinfo string into a ProcCpuInfo struct
-fn parse_cpuinfo(cpuinfo_str: &str) -> Option<ProcCpuInfo> {
-    let processor = get_first_proc_cpuinfo_property(cpuinfo_str, "processor").parse();
-    let core_id = get_first_proc_cpuinfo_property(cpuinfo_str, "core id").parse();
-
-    if processor.is_err() || core_id.is_err() {
+    if processor.is_none() || core_id.is_none() {
         return None;
     }
 
     Some(ProcCpuInfo {
-        processor: processor.unwrap(),
-        core_id: core_id.unwrap(),
+        processor: processor?,
+        core_id: core_id?,
+        name: name.unwrap_or_default(),
+        mhz: mhz.unwrap_or(0.0),
     })
 }
 
@@ -246,6 +237,8 @@ mod tests {
         let proc_cpu_infos = vec![ProcCpuInfo {
             processor: 0,
             core_id: 0,
+            name: "Intel Core i7".to_string(),
+            mhz: 3000.0,
         }];
 
         // WHEN
@@ -263,18 +256,26 @@ mod tests {
             ProcCpuInfo {
                 processor: 0,
                 core_id: 0,
+                name: "Intel Core i7".to_string(),
+                mhz: 3000.0,
             },
             ProcCpuInfo {
                 processor: 1,
                 core_id: 1,
+                name: "Intel Core i7".to_string(),
+                mhz: 3000.0,
             },
             ProcCpuInfo {
                 processor: 2,
                 core_id: 0,
+                name: "Intel Core i7".to_string(),
+                mhz: 3000.0,
             },
             ProcCpuInfo {
                 processor: 3,
                 core_id: 1,
+                name: "Intel Core i7".to_string(),
+                mhz: 3000.0,
             },
         ];
 
@@ -306,14 +307,20 @@ mod tests {
             ProcCpuInfo {
                 processor: 0,
                 core_id: 0,
+                name: "Intel Core i7".to_string(),
+                mhz: 3000.0,
             },
             ProcCpuInfo {
                 processor: 1,
                 core_id: 0,
+                name: "Intel Core i7".to_string(),
+                mhz: 3000.0,
             },
             ProcCpuInfo {
                 processor: 2,
                 core_id: 0,
+                name: "Intel Core i7".to_string(),
+                mhz: 3000.0,
             },
         ];
 

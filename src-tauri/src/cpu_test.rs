@@ -496,7 +496,6 @@ fn monitor_process(
             }
 
             let line = line.unwrap();
-            //println!("{}", line);
 
             if line.contains(mprime::ERROR_MESSAGE) || line.contains(ycruncher::ERROR_MESSAGE) {
                 println!("#############");

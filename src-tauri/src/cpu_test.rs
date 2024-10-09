@@ -25,8 +25,6 @@ pub struct AppState {
 pub struct CpuTestStatus {
     pub core_id: usize,
     pub max_clock: u64,
-    pub avg_clock: u64,
-    pub min_clock: u64,
     pub verification_failed: bool,
     pub method_response: HashMap<CpuTestMethod, TestMethodResponse>,
 }
@@ -101,8 +99,6 @@ pub fn initialize_response(
         let mut test_result = CpuTestStatus {
             core_id,
             max_clock: u64::MIN,
-            avg_clock: u64::MIN,
-            min_clock: u64::MAX,
             verification_failed: false,
             method_response: HashMap::new(),
         };
@@ -467,14 +463,12 @@ fn monitor_cpu(physical_core_id: usize, time_up: Arc<RwLock<bool>>, app_state: A
         let mut core_status = app_state.test_status.write().unwrap();
         let cpu_test_status = core_status.get_mut(&physical_core_id).unwrap();
         cpu_test_status.max_clock = std::cmp::max(cpu_test_status.max_clock, current_freq);
-        cpu_test_status.min_clock = std::cmp::min(cpu_test_status.min_clock, current_freq);
-        cpu_test_status.avg_clock = (cpu_test_status.avg_clock + current_freq) / 2;
 
         // Important, drop the lock before sleeping
         drop(core_status);
 
         // Wait a second
-        thread::sleep(Duration::from_secs(1));
+        thread::sleep(Duration::from_millis(500));
     }
 }
 

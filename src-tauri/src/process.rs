@@ -38,6 +38,7 @@ pub fn kill() {
 }
 
 pub fn pause(pid: u32) {
+    // TODO: does not work for ycruncher, because it spawnes child processes
     let pid = nix::unistd::Pid::from_raw(pid as i32);
     nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGSTOP).unwrap();
 }

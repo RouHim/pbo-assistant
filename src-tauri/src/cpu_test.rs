@@ -250,6 +250,7 @@ fn set_test_method_status(
     method_response.state = status;
 }
 
+/// Starts and joins all test related threads
 fn test_core_with_method(
     cpu_test_method: &CpuTestMethod,
     core_id: usize,
@@ -300,10 +301,10 @@ fn test_core_with_method(
         .spawn(move || monitor_cpu(core_id, time_up_for_monitor_cpu, app_state_for_monitor_cpu))
         .unwrap();
 
-    // Thread that monitors the prime95 process output for errors
+    // Thread that monitors the test process output for errors
     let time_up_for_monitor_process = time_up.clone();
     let app_state_for_monitor_process = app_state.clone();
-    let mprime_process_for_monitor_process = test_program_process.clone();
+    let test_process_for_monitor_process = test_program_process.clone();
     let monitor_process_thread = thread::Builder::new()
         .name(format!("monitor_process_thread_{}", core_id))
         .spawn(move || {
@@ -311,7 +312,7 @@ fn test_core_with_method(
                 core_id,
                 time_up_for_monitor_process,
                 app_state_for_monitor_process,
-                mprime_process_for_monitor_process,
+                test_process_for_monitor_process,
             );
         })
         .unwrap();
@@ -333,11 +334,29 @@ fn test_core_with_method(
         })
         .unwrap();
 
+    // Thread that periodically SIGSTOP and SIGCONT to boost the cpu freq
+    // This will periodically pause and start the test program process
+    let stop_start_pid = pid.clone();
+    let stop_start_time_up = time_up.clone();
+    let stop_start_app_state = app_state.clone();
+    let stop_start_thread = thread::Builder::new()
+        .name(format!("stop_start_thread_{}", core_id))
+        .spawn(move || {
+            stop_start(
+                stop_start_pid,
+                stop_start_time_up,
+                stop_start_app_state.clone(),
+                core_id,
+            );
+        })
+        .unwrap();
+
     // Wait for all threads to finish
     test_program_thread.join().unwrap();
     monitor_cpu_thread.join().unwrap();
     monitor_process_thread.join().unwrap();
     core_test_timer_thread.join().unwrap();
+    stop_start_thread.join().unwrap();
 
     // Set the state of the method to SUCCESS if the verification did not fail
     if !app_state.test_status.read().unwrap()[&core_id].verification_failed {
@@ -354,6 +373,36 @@ fn test_core_with_method(
             &cpu_test_method,
             CpuTestMethodStatus::Failed,
         );
+    }
+}
+
+fn stop_start(
+    pid: Arc<RwLock<u32>>,
+    time_up: Arc<RwLock<bool>>,
+    app_state: AppState,
+    core_id: usize,
+) {
+    loop {
+        // Check if time is up or if the verification failed
+        let should_interrupt = should_interrupt(app_state.clone(), core_id);
+        if *time_up.read().unwrap() || should_interrupt {
+            break;
+        }
+
+        let pid = pid.read().unwrap();
+
+        // Pause the process
+        process::pause(*pid);
+
+        // TODO: Finetune pause times 
+        // Pause the thread for 2 seconds
+        thread::sleep(Duration::from_secs(2));
+
+        // Continue the process
+        process::resume(*pid);
+
+        // Every 5 seconds
+        thread::sleep(Duration::from_secs(10));
     }
 }
 
@@ -476,10 +525,10 @@ fn monitor_process(
     physical_core_id: usize,
     time_up: Arc<RwLock<bool>>,
     app_state: AppState,
-    mprime_process: Arc<RwLock<Option<Child>>>,
+    test_process: Arc<RwLock<Option<Child>>>,
 ) {
-    if let Some(mprime_process) = &mut *mprime_process.write().unwrap() {
-        let stdout = mprime_process.stdout.as_mut().unwrap();
+    if let Some(test_process) = &mut *test_process.write().unwrap() {
+        let stdout = test_process.stdout.as_mut().unwrap();
         let reader = std::io::BufReader::new(stdout);
         let lines = reader.lines();
 

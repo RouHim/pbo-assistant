@@ -20,6 +20,7 @@ pub fn set_thread_affinity(pid: u32, physical_core_id: usize) {
 }
 
 pub fn kill() {
+    // TODO: avoid pgrep calls
     let output = Command::new("pgrep")
         .arg("-f")
         .arg("/tmp/pbo-assistant/")
@@ -34,4 +35,14 @@ pub fn kill() {
             .output()
             .expect("Failed to kill process");
     }
+}
+
+pub fn pause(pid: u32) {
+    let pid = nix::unistd::Pid::from_raw(pid as i32);
+    nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGSTOP).unwrap();
+}
+
+pub fn resume(pid: u32) {
+    let pid = nix::unistd::Pid::from_raw(pid as i32);
+    nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGCONT).unwrap();
 }

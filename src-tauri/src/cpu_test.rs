@@ -382,6 +382,9 @@ fn stop_start(
     app_state: AppState,
     core_id: usize,
 ) {
+    const SECS_BETWEEN_SUSPENSION: i32 = 15;
+    const SUSPENSION_DURATION: Duration = Duration::from_secs(1);
+
     loop {
         // Check if time is up or if the verification failed
         if *time_up.read().unwrap() || should_interrupt(app_state.clone(), core_id) {
@@ -394,14 +397,14 @@ fn stop_start(
         process::pause(*pid);
 
         // Pause the thread for 1 second
-        thread::sleep(Duration::from_secs(1));
+        thread::sleep(SUSPENSION_DURATION);
 
         // Continue the process
         process::resume(*pid);
 
         // Wait 15 seconds
         // Instead of waiting full 15 seconds, we wait 1 second and 15 times
-        for _ in 0..15 {
+        for _ in 0..SECS_BETWEEN_SUSPENSION {
             thread::sleep(Duration::from_secs(1));
 
             // Check if time is up or if the verification failed

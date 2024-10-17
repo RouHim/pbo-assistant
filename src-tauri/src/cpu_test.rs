@@ -384,8 +384,7 @@ fn stop_start(
 ) {
     loop {
         // Check if time is up or if the verification failed
-        let should_interrupt = should_interrupt(app_state.clone(), core_id);
-        if *time_up.read().unwrap() || should_interrupt {
+        if *time_up.read().unwrap() || should_interrupt(app_state.clone(), core_id) {
             break;
         }
 
@@ -394,15 +393,22 @@ fn stop_start(
         // Pause the process
         process::pause(*pid);
 
-        // TODO: Finetune pause times 
-        // Pause the thread for 2 seconds
-        thread::sleep(Duration::from_secs(2));
+        // Pause the thread for 1 second
+        thread::sleep(Duration::from_secs(1));
 
         // Continue the process
         process::resume(*pid);
 
-        // Every 5 seconds
-        thread::sleep(Duration::from_secs(10));
+        // Wait 15 seconds
+        // Instead of waiting full 15 seconds, we wait 1 second and 15 times
+        for _ in 0..15 {
+            thread::sleep(Duration::from_secs(1));
+
+            // Check if time is up or if the verification failed
+            if *time_up.read().unwrap() || should_interrupt(app_state.clone(), core_id) {
+                break;
+            }
+        }
     }
 }
 

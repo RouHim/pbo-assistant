@@ -9,7 +9,7 @@ const PROCESS_PATH: &str = "/tmp/pbo-assistant/mprime/mprime";
 
 pub fn initialize() {
     // Kill all processes
-    process::kill();
+    process::kill_pbo_app();
 
     let mprime = include_bytes!("../../assets/mprime/mprime");
     let prime_txt = include_bytes!("../../assets/mprime/prime.txt");

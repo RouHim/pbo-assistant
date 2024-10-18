@@ -11,7 +11,7 @@ const PROCESS_PATH: &str = "/tmp/pbo-assistant/ycruncher/y-cruncher";
 
 pub fn initialize() {
     // Kill all processes
-    process::kill();
+    process::kill_pbo_app();
 
     let memory_file = include_bytes!("../../assets/ycruncher/ycruncher.tar.gz");
 

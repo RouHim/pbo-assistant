@@ -458,7 +458,7 @@ fn check_time_left(
             *time_up.write().unwrap() = true;
 
             // Kill the test program processes
-            process::kill();
+            process::kill_pbo_app();
 
             break;
         }
@@ -466,7 +466,7 @@ fn check_time_left(
         // Check if the verification failed
         if should_interrupt(app_state.clone(), physical_core_id) {
             // Kill the rest program processes
-            process::kill();
+            process::kill_pbo_app();
 
             break;
         }
@@ -570,7 +570,7 @@ pub fn stop(cpu_test_status: AppState) {
     *cpu_test_status.terminated_by_user.write().unwrap() = true;
 
     // Kill all processes
-    process::kill();
+    process::kill_pbo_app();
 
     // Reset all test statuses
     let mut core_status = cpu_test_status.test_status.write().unwrap();

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+use std::io::BufRead;
 use crate::cpu_info;
 use std::process::Command;
 
@@ -19,31 +21,106 @@ pub fn set_thread_affinity(pid: u32, physical_core_id: usize) {
         .expect("Failed to set thread affinity");
 }
 
-pub fn kill() {
-    // TODO: avoid pgrep calls
-    let output = Command::new("pgrep")
-        .arg("-f")
-        .arg("/tmp/pbo-assistant/")
-        .output()
-        .expect("Failed to list processes");
+pub fn kill_pbo_app() {
+    let mut all_pids: HashSet<u32> = HashSet::new();
 
-    let pids = String::from_utf8(output.stdout).expect("Failed to convert output to string");
+    let pids_of_pbo_assistant = get_all_pids_for_command_path("/tmp/pbo-assistant/");
+    all_pids.extend(pids_of_pbo_assistant.clone());
+    
+    for pid in pids_of_pbo_assistant {
+        all_pids.extend(get_all_child_pids(pid));
+    }
 
-    for pid in pids.lines() {
-        Command::new("kill")
-            .arg(pid)
-            .output()
-            .expect("Failed to kill process");
+    for pid in all_pids {
+        let pid = nix::unistd::Pid::from_raw(pid);
+        nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGKILL).unwrap();
+    };
+}
+
+/// Get all PIDs for the specified command path
+fn get_all_pids_for_command_path(process_path: &str) -> Vec<u32> {
+    let mut pids = Vec::new();
+    
+    for processes in procfs::process::all_processes().unwrap() {
+        let process = processes.unwrap();
+        if let Ok(status) = process.stat() {
+            if let Ok(exe) = process.exe() {
+                let exec_path = exe.to_str().unwrap();
+                if exec_path.starts_with(process_path) {
+                    pids.push(status.pid  as u32);
+                }
+            }
+        }
+    }
+    
+    pids
+}
+
+/// Get all child processes of the specified parent process id
+fn get_all_child_pids(parent_pid: u32) -> Vec<u32> {
+    let mut child_pids = Vec::new();
+    
+    for processes in procfs::process::all_processes().unwrap() {
+        let process = processes.unwrap();
+        if let Ok(status) = process.stat() {
+            if status.ppid as u32 == parent_pid {
+                child_pids.push(status.pid  as u32);
+            }
+        }
+    }
+    
+    child_pids
+}
+
+pub fn pause(test_app_pid: u32) {
+    let mut all_pids: HashSet<u32> = HashSet::new();
+    all_pids.extend(get_all_child_pids(test_app_pid));
+    all_pids.insert(test_app_pid);
+
+    for pid in all_pids {
+        let pid = nix::unistd::Pid::from_raw(pid  as u32);
+        nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGSTOP).unwrap();
+    }    
+}
+
+pub fn resume(test_app_pid: u32) {
+    let mut all_pids: HashSet<u32> = HashSet::new();
+    all_pids.extend(get_all_child_pids(test_app_pid));
+    all_pids.insert(test_app_pid);
+
+    for pid in all_pids {
+        let pid = nix::unistd::Pid::from_raw(pid  as u32);
+        nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGCONT).unwrap();
     }
 }
 
-pub fn pause(pid: u32) {
-    // TODO: does not work for ycruncher, because it spawnes child processes
-    let pid = nix::unistd::Pid::from_raw(pid as i32);
-    nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGSTOP).unwrap();
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+    use std::thread::sleep;
+    use assertor::{assert_that, VecAssertion};
 
-pub fn resume(pid: u32) {
-    let pid = nix::unistd::Pid::from_raw(pid as i32);
-    nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGCONT).unwrap();
+    #[test]
+    fn test_get_all_pids_for_command_path() {
+        // Start a simple process (e.g., sleep for 10 seconds)
+        let mut cmd = Command::new("sleep")
+            .arg("10")
+            .spawn()
+            .expect("Failed to start sleep process");
+
+        // Give the process some time to start
+        sleep(Duration::from_secs(1));
+
+        // Get the command path of the sleep process
+        let process_path = "/usr/bin/sleep";
+
+        // Call the function to get all PIDs for the command path
+        let pids = get_all_pids_for_command_path(process_path);
+        
+        assert_that!(pids).is_not_empty();
+        
+        // Kill the process
+        cmd.kill().expect("Failed to kill sleep process");
+    }
 }

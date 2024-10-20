@@ -21,6 +21,7 @@ mod ycruncher;
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState {
             test_status: Arc::new(RwLock::new(HashMap::new())),
             terminated_by_user: Arc::new(RwLock::new(false)),

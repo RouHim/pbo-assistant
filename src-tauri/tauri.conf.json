@@ -2,6 +2,14 @@
   "productName": "pbo-assistant",
   "version": "0.0.0",
   "identifier": "de.rouhim",
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY2QzdBODg1ODhCMEFGNkIKUldScnI3Q0loYWpIWm9mVGg1RTZzVFE3L0kxdDlpTmxaR2ZTUjhkWTZNVkEyMW5SNHhWSTRHTFoK",
+      "endpoints": [
+        "https://gist.github.com/RouHim/2bb6b36c6efe03e2f4e7a3cb909ad825/raw/"
+      ]
+    }
+  },
   "build": {
     "frontendDist": "../src"
   },

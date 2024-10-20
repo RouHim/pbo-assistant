@@ -1,7 +1,24 @@
 use crate::cpu_info;
 use std::collections::HashSet;
-use std::io::BufRead;
 use std::process::Command;
+use nix::sched::CpuSet;
+
+/// Set the affinity of a thread to a specific core by using the `taskset` command
+// pub fn set_thread_affinity(pid: u32, physical_core_id: usize) {
+//     let logical_core_id = cpu_info::get_first_logical_core_id_for(physical_core_id);
+//     println!(
+//         "Setting thread affinity for pid {} to logical core {}",
+//         pid, logical_core_id
+//     );
+//     let mut cpu_set = CpuSet::new();
+//     cpu_set.set(logical_core_id).unwrap();
+// 
+//     nix::sched::sched_setaffinity(nix::unistd::Pid::from_raw(pid as i32), &cpu_set).unwrap();
+// 
+//     for child_pids in get_all_child_pids(pid) {
+//         nix::sched::sched_setaffinity(nix::unistd::Pid::from_raw(child_pids as i32), &cpu_set).unwrap();
+//     }
+// }
 
 /// Set the affinity of a thread to a specific core by using the `taskset` command
 pub fn set_thread_affinity(pid: u32, physical_core_id: usize) {

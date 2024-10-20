@@ -27,7 +27,9 @@ itertools = "0.13.0"
 lazy_static = "1.5"
 dirs = "5.0"
 log = "0.4.22"
-nix = { version = "0.29.0", features = ["signal"] }
+
+# Process and thread handling
+nix = { version = "0.29.0", features = ["signal", "sched"] }
 procfs = "0.17.0"
 
 [dev-dependencies]

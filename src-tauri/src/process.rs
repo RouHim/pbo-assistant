@@ -32,7 +32,7 @@ pub fn kill_pbo_app() {
     }
 
     for pid in all_pids {
-        let pid = nix::unistd::Pid::from_raw(pid);
+        let pid = nix::unistd::Pid::from_raw(pid as i32);
         nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGKILL).unwrap();
     };
 }
@@ -78,7 +78,7 @@ pub fn pause(test_app_pid: u32) {
     all_pids.insert(test_app_pid);
 
     for pid in all_pids {
-        let pid = nix::unistd::Pid::from_raw(pid  as u32);
+        let pid = nix::unistd::Pid::from_raw(pid as i32);
         nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGSTOP).unwrap();
     }    
 }
@@ -89,7 +89,7 @@ pub fn resume(test_app_pid: u32) {
     all_pids.insert(test_app_pid);
 
     for pid in all_pids {
-        let pid = nix::unistd::Pid::from_raw(pid  as u32);
+        let pid = nix::unistd::Pid::from_raw(pid  as i32);
         nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGCONT).unwrap();
     }
 }

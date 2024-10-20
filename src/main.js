@@ -1,4 +1,4 @@
-const {invoke} = window.__TAURI__.core;
+const invoke = window.__TAURI__.core.invoke;
 const {message} = window.__TAURI__.dialog;
 
 const durationPerCoreInput = document.getElementById("durationPerCoreInput");

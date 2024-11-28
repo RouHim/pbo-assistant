@@ -1,11 +1,11 @@
 use crate::process;
-use std::io::Write;
 use std::process::{Child, Command};
 use std::thread;
 use std::time::Duration;
 
 pub const ERROR_MESSAGE: &str = "TORTURE TEST FAILED";
 const PROCESS_PATH: &str = "/tmp/pbo-assistant/mprime/mprime";
+const CONFIG_PATH: &str = "/tmp/pbo-assistant/mprime/prime.txt";
 
 pub fn initialize() {
     // Kill all processes
@@ -26,30 +26,20 @@ pub fn initialize() {
         .expect("Failed to change permissions");
 }
 
+/// Start the process only with mprime -t prime.txt  
 fn spawn_process() -> Child {
-    let mut child_process = Command::new(PROCESS_PATH)
+    let child_process = Command::new(PROCESS_PATH)
+        .arg("-t")
+        .arg(CONFIG_PATH)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .expect("Failed to start the process");
 
-    let mut stdin = child_process.stdin.take().unwrap();
-    // Start torque test
-    stdin.write_all(b"16\n").unwrap();
-    // Core count
-    stdin.write_all(b"1\n").unwrap();
-    // Use hyperthreading
-    stdin.write_all(b"N\n").unwrap();
-    // Smallest FFTs
-    stdin.write_all(b"2\n").unwrap();
-    stdin.write_all(b"N\n").unwrap();
-    stdin.write_all(b"N\n").unwrap();
-    stdin.write_all(b"Y\n").unwrap();
+    let process_id = child_process.id();
 
-    let proccess_id = child_process.id();
-
-    println!("Started process with id: {}", proccess_id);
+    println!("Started process with id: {}", process_id);
 
     child_process
 }

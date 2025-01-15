@@ -1,0 +1,32 @@
+id: de.rouhim.pbo-assistant
+
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+
+command: pbo-assistant
+finish-args:
+  - --socket=wayland # Permission needed to show the window
+  - --socket=fallback-x11 # Permission needed to show the window
+  - --device=dri # OpenGL, not necessary for all projects
+  - --share=ipc
+
+modules:
+  - name: binary
+    buildsystem: simple
+
+    sources:
+      - type: file
+        url: file:///home/rouhim/Projects/pbo-assistant/src-tauri/target/release/pbo-assistant
+        only-arches: [x86_64]
+        sha256: 5d9998eb6a6f9b1112f1e7cdfc8062c86d80b62a17aaa774935fd64faa85fdd5
+
+    build-commands:
+      - install -Dm755 ./src-tauri/target/release/pbo-assistant /app/bin/pbo-assistant
+#      - install -Dm644 usr/share/applications/pbo-assistant.desktop /app/share/applications/de.rouhim.pbo-assistant.desktop
+#      - install -Dm644 usr/share/icons/hicolor/128x128/apps/pbo-assistant.png /app/share/icons/hicolor/128x128/apps/de.rouhim.pbo-assistant.png
+#      - install -Dm644 usr/share/icons/hicolor/32x32/apps/pbo-assistant.png /app/share/icons/hicolor/32x32/apps/de.rouhim.pbo-assistant.png
+#      - install -Dm644 usr/share/icons/hicolor/256x256@2/apps/pbo-assistant.png /app/share/icons/hicolor/256x256@2/apps/de.rouhim.pbo-assistant.png
+#      - ls
+#      - pwd
+#      - install -Dm644 ../metainfo.xml /app/share/metainfo/metainfo.xml

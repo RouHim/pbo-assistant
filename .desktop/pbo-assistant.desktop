@@ -1,0 +1,8 @@
+[Desktop Entry]
+Categories=Utility;
+Comment=Assistant that helps you find the optimal settings for your precision boost overdrive
+Exec=pbo-assistant
+Icon=pbo-assistant
+Name=PBO-Assistant
+Terminal=false
+Type=Application

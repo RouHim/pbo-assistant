@@ -198,63 +198,35 @@ jobs:
         env:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-        run: cargo tauri build
-
-      - name: Upload linux AppImage
-        if: matrix.platform == 'ubuntu-20.04'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ env.UPLOAD_URL }}
-          asset_path: src-tauri/target/release/bundle/appimage/bin-vec_${{ env.VERSION }}_amd64.AppImage
-          asset_name: pbo-assistant_${{ env.VERSION }}_amd64.AppImage
-          asset_content_type: application/octet-stream
-      - name: Upload linux AppImage updater
-        if: matrix.platform == 'ubuntu-20.04'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ env.UPLOAD_URL }}
-          asset_path: src-tauri/target/release/bundle/appimage/bin-vec_${{ env.VERSION }}_amd64.AppImage.tar.gz
-          asset_name: pbo-assistant_${{ env.VERSION }}_amd64.AppImage.tar.gz
-          asset_content_type: application/octet-stream
-      - name: Upload linux AppImage updater signature
-        if: matrix.platform == 'ubuntu-20.04'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ env.UPLOAD_URL }}
-          asset_path: src-tauri/target/release/bundle/appimage/bin-vec_${{ env.VERSION }}_amd64.AppImage.tar.gz.sig
-          asset_name: pbo-assistant_${{ env.VERSION }}_amd64.AppImage.tar.gz.sig
-          asset_content_type: application/octet-stream
-
-  update-updater:
-    name: Update updater
-    needs: [ bundle-and-upload ]
-    runs-on: ubuntu-22.04
-    env:
-      UPDATER_FILE: ".github/updater/pbo-assistant_update.json"
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Detect and set latest github release VERSION
-        shell: bash
         run: |
-          REPO="RouHim/pbo-assistant"
-          LATEST_RELEASE=$(curl --silent "https://api.github.com/repos/$REPO/releases/latest" | jq -r ".tag_name")
-          LATEST_RELEASE=${LATEST_RELEASE#v}
-          echo "Latest release is $LATEST_RELEASE"
-          echo "VERSION=$LATEST_RELEASE" >> $GITHUB_ENV
+          cargo tauri build --no-bundle
+          sha256sum src-tauri/target/release/pbo-assistant > src-tauri/target/release/pbo-assistant.sha256
 
-      - name: Build updater json
-        run: bash .github/updater/build_update_json.sh "${{ env.VERSION }}" "${{ env.UPDATER_FILE }}"
-
-      - name: Deploy update information to gist
-        uses: exuanbo/actions-deploy-gist@v1
+      - name: Upload linux Binary
+        if: matrix.platform == 'ubuntu-20.04'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          token: ${{ secrets.RELEASE_TOKEN }}
-          gist_id: 6dd4931683170f25859dc88cb1788b10
-          file_path: ${{ env.UPDATER_FILE }}
+          upload_url: ${{ env.UPLOAD_URL }}
+          asset_path: src-tauri/target/release/pbo-assistant
+          asset_name: pbo-assistant_${{ env.VERSION }}
+          asset_content_type: application/octet-stream
+      - name: Upload linux Binary sha sum
+        if: matrix.platform == 'ubuntu-20.04'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ env.UPLOAD_URL }}
+          asset_path: src-tauri/target/release/pbo-assistant.sha256
+          asset_name: pbo-assistant_${{ env.VERSION }}.sha256
+          asset_content_type: application/octet-stream
+
+
+      - name: Build flatpak from binary
+        if: matrix.platform == 'ubuntu-20.04'
+        run: |
+          sudo apt install -y flatpak-builder
+          flatpak-builder --repo=repo --force-clean build-dir .desktop/flatpak.yml
+          flatpak build-bundle repo pbo-assistant.flatpak de.rouhim.pbo-assistant

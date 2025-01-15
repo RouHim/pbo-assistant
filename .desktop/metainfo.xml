@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop">
+    <id>de.rouhim.pbo-assistant</id>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>MIT</project_license>
+    <name>PBO Assistant</name>
+    <summary>Assistant that helps you find the optimal settings for your precision boost overdrive</summary>
+    <description>
+        <p>PBO Assistant is a tool that helps you find the optimal settings for your precision boost overdrive.</p>
+    </description>
+    <developer_name>Rouven H.</developer_name>
+    <url type="homepage">https://github.com/rouhim</url>
+    <url type="bugtracker">https://github.com/RouHim/pbo-assistant/issues</url>
+    <url type="help">https://github.com/RouHim/pbo-assistant</url>
+    <provides>
+        <binary>pbo-assistant</binary>
+    </provides>
+    <releases>
+        <release version="0.0.0" date="2023-10-01">
+            <description>
+                <p>Initial release.</p>
+            </description>
+        </release>
+    </releases>
+    <custom>
+        <value key="x-flatpak-version">1.0</value>
+    </custom>
+</component>

@@ -2,6 +2,9 @@
 .idea
 target
 
+#flatpak
+.flatpak-builder/
+
 # Logs
 logs
 *.log

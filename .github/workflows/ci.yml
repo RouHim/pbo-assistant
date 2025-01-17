@@ -199,6 +199,7 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         run: |
+          pwd
           cargo tauri build --no-bundle
           sha256sum src-tauri/target/release/pbo-assistant > src-tauri/target/release/pbo-assistant.sha256
 

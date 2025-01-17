@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/RouHim/pbo-assistant/compare/v1.0.0...v1.0.1) (2025-01-17)
+
+
+### Bug Fixes
+
+* pipe ([e77046d](https://github.com/RouHim/pbo-assistant/commit/e77046d845135a93aeaa0e50904ef5b43e070e9c))
+
 # 1.0.0 (2025-01-16)
 
 

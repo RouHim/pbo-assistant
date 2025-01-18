@@ -1,3 +1,10 @@
+## [1.0.6](https://github.com/RouHim/pbo-assistant/compare/v1.0.5...v1.0.6) (2025-01-18)
+
+
+### Bug Fixes
+
+* add libsoup-3.0-dev ([e3963ce](https://github.com/RouHim/pbo-assistant/commit/e3963ce2fb1f16fd1619a8d7fd58aba21acb85d7))
+
 ## [1.0.5](https://github.com/RouHim/pbo-assistant/compare/v1.0.4...v1.0.5) (2025-01-18)
 
 

@@ -1,3 +1,10 @@
+## [1.0.7](https://github.com/RouHim/pbo-assistant/compare/v1.0.6...v1.0.7) (2025-01-18)
+
+
+### Bug Fixes
+
+* **pipe:** add build dependency: libjavascriptcoregtk-4.1-dev ([42026fa](https://github.com/RouHim/pbo-assistant/commit/42026fa949b60fb545d32ebf508c60a9837edffa))
+
 ## [1.0.6](https://github.com/RouHim/pbo-assistant/compare/v1.0.5...v1.0.6) (2025-01-18)
 
 

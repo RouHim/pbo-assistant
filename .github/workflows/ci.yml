@@ -183,7 +183,7 @@ jobs:
           cd ..
 
       - name: Install Tauri dependencies (ubuntu only)
-        run: sudo apt update && sudo apt install -y libwebkit2gtk-4.0-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libsoup3.0-dev
+        run: sudo apt update && sudo apt install -y libwebkit2gtk-4.0-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
 
       - uses: cargo-bins/cargo-binstall@main
       - name: Install Tauri-CLI

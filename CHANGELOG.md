@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/RouHim/pbo-assistant/compare/v1.0.3...v1.0.4) (2025-01-18)
+
+
+### Bug Fixes
+
+* pipe version set to tauri v2 path ([10fa186](https://github.com/RouHim/pbo-assistant/commit/10fa186c97baa5eb75df0f0d0b5e0807b3964c3b))
+
 ## [1.0.3](https://github.com/RouHim/pbo-assistant/compare/v1.0.2...v1.0.3) (2025-01-18)
 
 ## [1.0.2](https://github.com/RouHim/pbo-assistant/compare/v1.0.1...v1.0.2) (2025-01-17)

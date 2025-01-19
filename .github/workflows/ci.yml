@@ -221,6 +221,6 @@ jobs:
         run: |
           sudo apt install -y flatpak flatpak-builder
           sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          sudo flatpak install flathub org.gnome.Platform//46 org.gnome.Sdk//46
+          sudo flatpak install -y flathub org.gnome.Platform//46 org.gnome.Sdk//46
           flatpak-builder --repo=repo --force-clean build-dir .desktop/flatpak.yml
           flatpak build-bundle repo pbo-assistant.flatpak de.rouhim.pbo-assistant

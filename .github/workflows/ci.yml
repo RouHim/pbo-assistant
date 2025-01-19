@@ -220,7 +220,7 @@ jobs:
       - name: Build flatpak from binary
         run: |
           sudo apt install -y flatpak flatpak-builder
-          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           flatpak install flathub org.gnome.Platform//46 org.gnome.Sdk//46
           flatpak-builder --repo=repo --force-clean build-dir .desktop/flatpak.yml
           flatpak build-bundle repo pbo-assistant.flatpak de.rouhim.pbo-assistant

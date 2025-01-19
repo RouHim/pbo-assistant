@@ -1,3 +1,10 @@
+## [1.0.12](https://github.com/RouHim/pbo-assistant/compare/v1.0.11...v1.0.12) (2025-01-19)
+
+
+### Bug Fixes
+
+* **pipe:** add build dependency: flatpak ([88059cd](https://github.com/RouHim/pbo-assistant/commit/88059cd8c20d7eeaf81d64bf418e10b7f50621f0))
+
 ## [1.0.11](https://github.com/RouHim/pbo-assistant/compare/v1.0.10...v1.0.11) (2025-01-19)
 
 

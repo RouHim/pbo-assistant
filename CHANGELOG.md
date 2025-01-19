@@ -1,3 +1,10 @@
+## [1.0.8](https://github.com/RouHim/pbo-assistant/compare/v1.0.7...v1.0.8) (2025-01-19)
+
+
+### Bug Fixes
+
+* **pipe:** add build dependency: libwebkit2gtk-4.1-dev ([1dbd7d0](https://github.com/RouHim/pbo-assistant/commit/1dbd7d091ae5cac8a9256d93b2ac99c87d7aedda))
+
 ## [1.0.7](https://github.com/RouHim/pbo-assistant/compare/v1.0.6...v1.0.7) (2025-01-18)
 
 

@@ -219,6 +219,7 @@ jobs:
 
       - name: Build flatpak from binary
         run: |
-          sudo apt install -y flatpak-builder
+          sudo apt install -y flatpak flatpak-builder
+          flatpak install flathub org.gnome.Platform//46 org.gnome.Sdk//46
           flatpak-builder --repo=repo --force-clean build-dir .desktop/flatpak.yml
           flatpak build-bundle repo pbo-assistant.flatpak de.rouhim.pbo-assistant
